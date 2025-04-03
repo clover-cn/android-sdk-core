@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设备控制</title>
+    <style>
+        body {
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .button.scan {
+            background-color: #2196F3;
+        }
+
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .connected {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+
+        .disconnected {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+
+        #messageLog {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            height: 200px;
+            overflow-y: auto;
+        }
+
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .section-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>设备控制</h1>
+
+    <!-- 相机扫描部分 -->
+    <div class="section">
+        <div class="section-title">扫码功能</div>
+        <button class="button scan" onclick="startScan()">开始扫码</button>
+        <div id="scanResult"></div>
+    </div>
+
+    <!-- 蓝牙控制部分 -->
+    <div class="section">
+        <div class="section-title">蓝牙控制</div>
+        <div id="statusDiv" class="status disconnected">
+            设备状态：未连接
+        </div>
+
+        <div>
+            <input type="text" id="macAddress" placeholder="5C:53:10:7A:1C:80" value="5C:53:10:7A:1C:80"
+                style="padding: 10px; width: 200px;">
+            <button class="button" onclick="connectDevice()">连接设备</button>
+            <button class="button" onclick="disconnectDevice()" style="background-color: #f44336;">断开连接</button>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <input type="text" id="serviceUUID" placeholder="服务UUID" value="0000FFF0-0000-1000-8000-00805F9B34FB"
+                style="padding: 10px; width: 200px;">
+            <input type="text" id="characteristicUUID" placeholder="特征值UUID"
+                value="0000FFF2-0000-1000-8000-00805F9B34FB" style="padding: 10px; width: 200px;">
+            <input type="text" id="sendData" placeholder="十六进制数据格式(如：7B86...)" value="7B864814071027923000280033BD7D"
+                style="padding: 10px; width: 200px;">
+            <button class="button" onclick="sendData()">发送数据</button>
+            
+            <div style="margin-top: 10px;">
+                <label style="display: inline-block; margin-right: 10px;">
+                    <input type="checkbox" id="notificationsSwitch" checked onchange="toggleNotifications()">
+                    接收设备通知
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div id="messageLog">
+        <!-- 消息日志将在这里显示 -->
+    </div>
+
+    <script>
+        // 相机扫描功能
+        function startScan() {
+            CameraManager.startQRCodeScan();
+        }
+
+        window.onQRCodeResult = function (result) {
+            document.getElementById('scanResult').textContent = '扫描结果: ' + result;
+            logMessage('扫描到二维码: ' + result);
+        };
+
+        window.onError = function (error) {
+            logMessage('错误: ' + error);
+        };
+
+        // 检查蓝牙状态
+        function checkBluetoothStatus() {
+            let status = JSON.parse(BluetoothInterface.getBluetoothStatus());
+            if (!status.supported) {
+                alert('此设备不支持蓝牙功能');
+                return false;
+            }
+            if (!status.enabled) {
+                alert('请开启蓝牙');
+                return false;
+            }
+            return true;
+        }
+
+        // 连接设备
+        function connectDevice() {
+            if (!checkBluetoothStatus()) return;
+            let macAddress = document.getElementById('macAddress').value;
+            if (!macAddress) {
+                alert('请输入MAC地址');
+                return;
+            }
+
+            BluetoothInterface.connectToDevice(macAddress);
+            logMessage('正在连接设备: ' + macAddress);
+        }
+
+        // 断开连接
+        function disconnectDevice() {
+            BluetoothInterface.disconnect();
+            logMessage('正在断开连接...');
+        }
+
+        // 发送数据
+        function sendData() {
+            let serviceUUID = document.getElementById('serviceUUID').value;
+            let characteristicUUID = document.getElementById('characteristicUUID').value;
+            let data = document.getElementById('sendData').value;
+
+            if (!serviceUUID || !characteristicUUID || !data) {
+                alert('请填写完整信息');
+                return;
+            }
+
+            let byteArray = hexStringToByte(data);
+            if (byteArray.length === 0) {
+                return; // 如果转换失败，则退出
+            }
+
+            // 构造一个用于传递原始十六进制数据的对象
+            let rawHexData = data.toUpperCase();
+
+            // 发送到设备，直接传递十六进制字符串
+            BluetoothInterface.writeRawHexData(serviceUUID, characteristicUUID, rawHexData);
+
+            // 创建更好的日志展示
+            let byteValues = Array.from(byteArray).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ');
+            logMessage('正在发送数据: [' + byteValues + ']');
+        }
+
+        // 记录消息
+        function logMessage(message) {
+            let log = document.getElementById('messageLog');
+            let time = new Date().toLocaleTimeString();
+            log.innerHTML += `<div>[${time}] ${message}</div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // 处理分片写入完成事件
+        function onWriteCompleted(data) {
+            try {
+                let result = JSON.parse(data);
+                
+                // 如果是分片写入完成
+                if (result.chunked && result.status === "success") {
+                    logMessage(`分片数据写入完成，共${result.totalChunks}片`);
+                } else {
+                    logMessage(`数据写入${result.status === "success" ? "成功" : "失败"}`);
+                }
+            } catch (e) {
+                logMessage("数据写入结果解析错误: " + e.message);
+            }
+        }
+
+        // 将十六进制字符串转换为字节数组
+        function hexStringToByte(str) {
+            if (!str) {
+                return new Uint8Array();
+            }
+
+            // 转换为大写并去除所有空格
+            str = str.toUpperCase().replace(/\s/g, '');
+
+            // 检查是否为有效的十六进制字符串
+            if (!/^[0-9A-F]*$/.test(str)) {
+                logMessage('错误：包含无效的十六进制字符');
+                return new Uint8Array();
+            }
+
+            // 如果长度为奇数，添加前导零
+            if (str.length % 2 !== 0) {
+                str = '0' + str;
+                logMessage('警告：十六进制字符串长度为奇数，已添加前导零');
+            }
+
+            var a = [];
+            for (var i = 0, len = str.length; i < len; i += 2) {
+                a.push(parseInt(str.substr(i, 2), 16));
+            }
+            return new Uint8Array(a);
+        }
+
+        // 蓝牙连接回调
+        window.onBluetoothConnected = function (address) {
+            document.getElementById('statusDiv').className = 'status connected';
+            document.getElementById('statusDiv').innerHTML = '设备状态：已连接 - ' + address;
+            logMessage('设备已连接: ' + address);
+        };
+
+        window.onBluetoothDisconnected = function (address) {
+            document.getElementById('statusDiv').className = 'status disconnected';
+            document.getElementById('statusDiv').innerHTML = '设备状态：未连接';
+            logMessage('设备已断开: ' + address);
+            console.log('设备已断开: ' + address);
+            
+        };
+
+        window.onBluetoothError = function (error) {
+            logMessage('错误: ' + error);
+        };
+
+        window.onServicesDiscovered = function (services) {
+            logMessage('发现服务: ' + services);
+        };
+
+        window.onCharacteristicChanged = function (data) {
+            let json = JSON.parse(data);
+            let displayValue = json.value;
+            if (json.hexValue) {
+                displayValue = json.value + " (HEX: " + json.hexValue + ")";
+            }
+            logMessage('收到数据: ' + displayValue + ' (UUID: ' + json.uuid + ')');
+        };
+
+        // 当蓝牙准备就绪时的回调函数
+        window.onBluetoothReady = function () {
+            logMessage('状态: 蓝牙已准备就绪');
+        };
+
+        // 切换蓝牙通知状态
+        function toggleNotifications() {
+            let enabled = document.getElementById('notificationsSwitch').checked;
+            BluetoothInterface.setNotificationsEnabled(enabled);
+            logMessage('设备通知已' + (enabled ? '开启' : '关闭'));
+        }
+
+        // 页面加载完成后检查蓝牙状态
+        window.onload = function () {
+            checkBluetoothStatus();
+            
+            // 同步通知开关状态
+            try {
+                let notificationsEnabled = BluetoothInterface.isNotificationsEnabled();
+                document.getElementById('notificationsSwitch').checked = notificationsEnabled;
+            } catch (e) {
+                console.error('获取通知状态失败', e);
+            }
+        };
+    </script>
+</body>
+
+</html>
