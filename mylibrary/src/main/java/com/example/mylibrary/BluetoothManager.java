@@ -517,6 +517,12 @@ public class BluetoothManager {
             return;
         }
         
+        // 添加权限检查
+        if (!hasBluetoothPermissions()) {
+            Log.e(TAG, "Missing Bluetooth permissions");
+            notifyWebView("onBluetoothError", "缺少必要的蓝牙权限");
+            return;
+        }
         
         currentDevice = device;
         
@@ -532,300 +538,182 @@ public class BluetoothManager {
         mainHandler.postDelayed(timeoutRunnable, timeoutTime);
         
         Log.i(TAG, "Attempting to connect to device: " + device.getAddress());
-        // 使用autoConnect=true对首次连接可能有所帮助
-        boolean useAutoConnect = retryCount == 0;
-        bluetoothGatt = device.connectGatt(context, useAutoConnect, new BluetoothGattCallback() {
-            @Override
-            public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-                if (status != BluetoothGatt.GATT_SUCCESS) {
-                    Log.e(TAG, "Connection state change error: " + status);
-                    
-                    // 如果还有重试机会，尝试重新连接
-                    // 首次连接时给予更多的重试次数
-                    int maxRetry = retryCount == 0 ? MAX_RETRIES + 1 : MAX_RETRIES;
-                    if (retryCount < maxRetry) {
-                        retryCount++;
-                        Log.i(TAG, "Retrying connection, attempt " + retryCount);
+        try {
+            // 使用autoConnect=true对首次连接可能有所帮助
+            boolean useAutoConnect = retryCount == 0;
+            bluetoothGatt = device.connectGatt(context, useAutoConnect, new BluetoothGattCallback() {
+                @Override
+                public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+                    if (status != BluetoothGatt.GATT_SUCCESS) {
+                        Log.e(TAG, "Connection state change error: " + status);
                         
-                        // 首次尝试连接使用递增延迟策略
-                        int currentDelay = RETRY_DELAY * retryCount;
-                        Log.d(TAG, "Will retry in " + currentDelay + "ms");
-                        
-                        mainHandler.postDelayed(() -> {
-                            if (currentDevice != null) {
-                                cleanupConnection();
-                                // 每次重试增加延迟时间
-                                connectToGattServer(currentDevice);
-                            }
-                        }, currentDelay);
-                        return;
-                    } else {
-                        Log.e(TAG, "Max retries reached, connection failed");
-                        notifyWebView("onBluetoothError", "连接失败，请重启应用或检查设备");
-                        disconnect();
-                        return;
-                    }
-                }
-                
-                // 如果状态改变但不是错误，重置重试计数
-                retryCount = 0;
-
-                // 清除连接超时定时器
-                if (timeoutRunnable != null) {
-                    mainHandler.removeCallbacks(timeoutRunnable);
-                    timeoutRunnable = null;
-                }
-
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    Log.i(TAG, "Connected to GATT server: " + gatt.getDevice().getAddress());
-                    
-                    // 设置更高的连接优先级以提高传输速度和稳定性
-                    boolean priorityResult = gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
-                    Log.d(TAG, "Set high priority result: " + priorityResult);
-                    
-                    // 配置MTU大小
-                    if (!mtuConfigured) {
-                        Log.d(TAG, "Requesting MTU size: " + PREFERRED_MTU);
-                        boolean mtuResult = gatt.requestMtu(PREFERRED_MTU);
-                        if (!mtuResult) {
-                            Log.e(TAG, "Failed to request MTU");
+                        // 如果还有重试机会，尝试重新连接
+                        // 首次连接时给予更多的重试次数
+                        int maxRetry = retryCount == 0 ? MAX_RETRIES + 1 : MAX_RETRIES;
+                        if (retryCount < maxRetry) {
+                            retryCount++;
+                            Log.i(TAG, "Retrying connection, attempt " + retryCount);
+                            
+                            // 首次尝试连接使用递增延迟策略
+                            int currentDelay = RETRY_DELAY * retryCount;
+                            Log.d(TAG, "Will retry in " + currentDelay + "ms");
+                            
+                            mainHandler.postDelayed(() -> {
+                                if (currentDevice != null) {
+                                    cleanupConnection();
+                                    // 每次重试增加延迟时间
+                                    connectToGattServer(currentDevice);
+                                }
+                            }, currentDelay);
+                            return;
+                        } else {
+                            Log.e(TAG, "Max retries reached, connection failed");
+                            notifyWebView("onBluetoothError", "连接失败，请重启应用或检查设备");
+                            disconnect();
+                            return;
                         }
                     }
                     
-                    notifyWebView("onBluetoothConnected", device.getAddress());
-                    
-                    // 延迟发现服务，给设备一些时间稳定连接
-                    mainHandler.postDelayed(() -> {
+                    // 如果状态改变但不是错误，重置重试计数
+                    retryCount = 0;
+
+                    // 清除连接超时定时器
+                    if (timeoutRunnable != null) {
+                        mainHandler.removeCallbacks(timeoutRunnable);
+                        timeoutRunnable = null;
+                    }
+
+                    if (newState == BluetoothProfile.STATE_CONNECTED) {
+                        Log.i(TAG, "Connected to GATT server: " + gatt.getDevice().getAddress());
+                        
+                        // 设置更高的连接优先级以提高传输速度和稳定性
+                        boolean priorityResult = gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+                        Log.d(TAG, "Set high priority result: " + priorityResult);
+                        
+                        // 配置MTU大小
+                        if (!mtuConfigured) {
+                            Log.d(TAG, "Requesting MTU size: " + PREFERRED_MTU);
+                            boolean mtuResult = gatt.requestMtu(PREFERRED_MTU);
+                            if (!mtuResult) {
+                                Log.e(TAG, "Failed to request MTU");
+                            }
+                        }
+                        
+                        notifyWebView("onBluetoothConnected", device.getAddress());
+                        
+                        // 延迟发现服务，给设备一些时间稳定连接
+                        mainHandler.postDelayed(() -> {
+                            if (bluetoothGatt != null) {
+                                bluetoothGatt.discoverServices();
+                            }
+                        }, 500); // 增加延迟到500ms
+                    } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                        Log.i(TAG, "Disconnected from GATT server. Status: " + status);
+                        String deviceAddress = device != null ? device.getAddress() : "未知设备";
+                        Log.d(TAG, "Device " + deviceAddress + " disconnected, retry count: " + retryCount);
+                        cleanupConnection();
+                        notifyWebView("onBluetoothDisconnected", deviceAddress);
+                    } else {
+                        Log.d(TAG, "Connection state changed to: " + newState);
+                    }
+                }
+
+                @Override
+                public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        Log.d(TAG, "MTU changed to: " + mtu);
+                        mtuConfigured = true;
+                        // MTU配置成功后，开始发现服务
                         if (bluetoothGatt != null) {
                             bluetoothGatt.discoverServices();
                         }
-                    }, 500); // 增加延迟到500ms
-                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    Log.i(TAG, "Disconnected from GATT server. Status: " + status);
-                    String deviceAddress = device != null ? device.getAddress() : "未知设备";
-                    Log.d(TAG, "Device " + deviceAddress + " disconnected, retry count: " + retryCount);
-                    cleanupConnection();
-                    notifyWebView("onBluetoothDisconnected", deviceAddress);
-                } else {
-                    Log.d(TAG, "Connection state changed to: " + newState);
-                }
-            }
-
-            @Override
-            public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
-                if (status == BluetoothGatt.GATT_SUCCESS) {
-                    Log.d(TAG, "MTU changed to: " + mtu);
-                    mtuConfigured = true;
-                    // MTU配置成功后，开始发现服务
-                    if (bluetoothGatt != null) {
-                        bluetoothGatt.discoverServices();
+                    } else {
+                        Log.e(TAG, "MTU change failed with status: " + status);
                     }
-                } else {
-                    Log.e(TAG, "MTU change failed with status: " + status);
                 }
-            }
 
-            @Override
-            public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-                if (status == BluetoothGatt.GATT_SUCCESS) {
-                    List<String> services = new ArrayList<>();
-                    for (BluetoothGattService service : gatt.getServices()) {
-                        String serviceUuid = service.getUuid().toString();
-                        services.add(serviceUuid);
-                        Log.d(TAG, "发现服务: " + serviceUuid);
-                        
-                        // 自动开启所有可通知的特征值
-                        for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
-                            String uuid = characteristic.getUuid().toString();
-                            int properties = characteristic.getProperties();
-                            Log.d(TAG, "发现特征值: " + uuid + ", 属性: " + properties);
+                @Override
+                public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        List<String> services = new ArrayList<>();
+                        for (BluetoothGattService service : gatt.getServices()) {
+                            String serviceUuid = service.getUuid().toString();
+                            services.add(serviceUuid);
+                            Log.d(TAG, "发现服务: " + serviceUuid);
                             
-                            // 启用通知
-                            if ((properties & BluetoothGattCharacteristic.PROPERTY_NOTIFY) > 0) {
-                                Log.d(TAG, "特征值支持通知: " + uuid);
-                                if (!characteristicNotificationEnabled.containsKey(uuid) || !characteristicNotificationEnabled.get(uuid)) {
-                                    // 先设置通知
-                                    boolean success = gatt.setCharacteristicNotification(characteristic, true);
-                                    if (success) {
-                                        Log.d(TAG, "开启通知成功: " + uuid);
-                                        characteristicNotificationEnabled.put(uuid, true);
-                                        
-                                        // 写入客户端特征值配置描述符
-                                        BluetoothGattDescriptor descriptor = characteristic.getDescriptor(
-                                            UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
-                                        if (descriptor != null) {
-                                            Log.d(TAG, "找到CCCD描述符: " + uuid);
-                                            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                                            boolean writeResult = gatt.writeDescriptor(descriptor);
-                                            if (!writeResult) {
-                                                Log.e(TAG, "写入CCCD描述符失败: " + uuid);
+                            // 自动开启所有可通知的特征值
+                            for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
+                                String uuid = characteristic.getUuid().toString();
+                                int properties = characteristic.getProperties();
+                                Log.d(TAG, "发现特征值: " + uuid + ", 属性: " + properties);
+                                
+                                // 启用通知
+                                if ((properties & BluetoothGattCharacteristic.PROPERTY_NOTIFY) > 0) {
+                                    Log.d(TAG, "特征值支持通知: " + uuid);
+                                    if (!characteristicNotificationEnabled.containsKey(uuid) || !characteristicNotificationEnabled.get(uuid)) {
+                                        // 先设置通知
+                                        boolean success = gatt.setCharacteristicNotification(characteristic, true);
+                                        if (success) {
+                                            Log.d(TAG, "开启通知成功: " + uuid);
+                                            characteristicNotificationEnabled.put(uuid, true);
+                                            
+                                            // 写入客户端特征值配置描述符
+                                            BluetoothGattDescriptor descriptor = characteristic.getDescriptor(
+                                                UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+                                            if (descriptor != null) {
+                                                Log.d(TAG, "找到CCCD描述符: " + uuid);
+                                                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                                                boolean writeResult = gatt.writeDescriptor(descriptor);
+                                                if (!writeResult) {
+                                                    Log.e(TAG, "写入CCCD描述符失败: " + uuid);
+                                                } else {
+                                                    Log.d(TAG, "写入CCCD描述符成功: " + uuid);
+                                                }
                                             } else {
-                                                Log.d(TAG, "写入CCCD描述符成功: " + uuid);
+                                                Log.e(TAG, "未找到CCCD描述符: " + uuid);
                                             }
                                         } else {
-                                            Log.e(TAG, "未找到CCCD描述符: " + uuid);
+                                            Log.e(TAG, "开启通知失败: " + uuid);
+                                            characteristicNotificationEnabled.put(uuid, false);
                                         }
                                     } else {
-                                        Log.e(TAG, "开启通知失败: " + uuid);
-                                        characteristicNotificationEnabled.put(uuid, false);
+                                        Log.d(TAG, "通知已启用: " + uuid);
                                     }
-                                } else {
-                                    Log.d(TAG, "通知已启用: " + uuid);
                                 }
                             }
                         }
-                    }
-                    notifyWebView("onServicesDiscovered", String.join(",", services));
-                } else {
-                    Log.e(TAG, "Service discovery failed with status: " + status);
-                    notifyWebView("onBluetoothError", "服务发现失败");
-                    disconnect();
-                }
-            }
-
-            @Override
-            public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
-                String uuid = descriptor.getUuid().toString();
-                if (status == BluetoothGatt.GATT_SUCCESS) {
-                    Log.d(TAG, "描述符写入成功: " + uuid);
-                    // 描述符写入成功后，尝试读取特征值
-                    BluetoothGattCharacteristic characteristic = descriptor.getCharacteristic();
-                    if (characteristic != null) {
-                        String charUuid = characteristic.getUuid().toString();
-                        Log.d(TAG, "尝试读取特征值: " + charUuid);
-                        boolean readResult = gatt.readCharacteristic(characteristic);
-                        if (!readResult) {
-                            Log.e(TAG, "读取特征值失败: " + charUuid);
-                        }
-                    }
-                } else {
-                    Log.e(TAG, "描述符写入失败，状态码: " + status + ", UUID: " + uuid);
-                }
-            }
-
-            @Override
-            public void onCharacteristicChanged(BluetoothGatt gatt,
-                                               BluetoothGattCharacteristic characteristic) {
-                String uuid = characteristic.getUuid().toString();
-                byte[] data = characteristic.getValue();
-                
-                // 将字节数组转换为十六进制字符串以便于显示
-                StringBuilder hexStringBuilder = new StringBuilder();
-                for (byte b : data) {
-                    hexStringBuilder.append(String.format("%02X", b));
-                }
-                String hexValue = hexStringBuilder.toString();
-                
-                Log.d(TAG, "收到特征值变化: UUID=" + uuid + ", 值=" + hexValue);
-                
-                // 只有在通知开启的情况下才传递数据给WebView
-                if (notificationsEnabled) {
-                    // 直接使用十六进制值，不尝试解析为文本
-                    notifyWebView("onCharacteristicChanged",
-                        String.format("{\"uuid\":\"%s\",\"value\":\"%s\",\"hexValue\":\"%s\"}",
-                        uuid, hexValue, hexValue));
-                } else {
-                    Log.d(TAG, "通知已关闭，不处理收到的数据");
-                }
-            }
-
-            @Override
-            public void onCharacteristicWrite(BluetoothGatt gatt,
-                                             BluetoothGattCharacteristic characteristic,
-                                             int status) {
-                // 移除写入超时
-                mainHandler.removeCallbacksAndMessages(null);
-                
-                String uuid = characteristic.getUuid().toString();
-                String result = status == BluetoothGatt.GATT_SUCCESS ? "success" : "failed";
-                Log.d(TAG, "写入特征值完成: UUID=" + uuid + ", 状态=" + result);
-                
-                // 处理分片发送回调，检查是否有待发送的数据片段
-                if (status == BluetoothGatt.GATT_SUCCESS && chunkedWriteData.containsKey(uuid)) {
-                    ChunkedWriteData writeData = chunkedWriteData.get(uuid);
-                    int nextIndex = writeData.currentIndex + 1;
-                    
-                    // 如果还有下一片段，延迟一小段时间后发送
-                    if (nextIndex < writeData.chunks.size()) {
-                        writeData.currentIndex = nextIndex;
-                        
-                        // 延迟一定时间后发送下一片，避免设备处理不过来
-                        mainHandler.postDelayed(() -> {
-                            sendNextChunk(characteristic, writeData.chunks, 
-                                       nextIndex, writeData.totalChunks, uuid);
-                        }, 50); // 50ms延迟
-                        
-                        return; // 不通知完成，因为还有更多片段
+                        notifyWebView("onServicesDiscovered", String.join(",", services));
                     } else {
-                        // 所有片段已发送完成
-                        Log.d(TAG, "所有数据片段发送完成: UUID=" + uuid);
-                        notifyWebView("onWriteCompleted", 
-                            String.format("{\"uuid\":\"%s\",\"status\":\"success\",\"chunked\":true,\"totalChunks\":%d}",
-                            uuid, writeData.totalChunks));
-                        
-                        // 清理分片数据
-                        chunkedWriteData.remove(uuid);
-                        
-                        // 写入完成后处理通知启用等操作
-                        handleWriteCompletion(gatt, characteristic);
-                        return;
+                        Log.e(TAG, "Service discovery failed with status: " + status);
+                        notifyWebView("onBluetoothError", "服务发现失败");
+                        disconnect();
                     }
                 }
-                
-                // 非分片写入的常规处理
-                notifyWebView("onWriteCompleted",
-                    String.format("{\"uuid\":\"%s\",\"status\":\"%s\"}",
-                    uuid, result));
-                
-                if (status != BluetoothGatt.GATT_SUCCESS) {
-                    notifyWebView("onBluetoothError", "写入失败，错误码: " + status);
-                    return;
-                }
 
-                // 写入成功后处理通知启用等操作
-                handleWriteCompletion(gatt, characteristic);
-            }
-            
-            // 抽取写入完成后的通用处理逻辑
-            private void handleWriteCompletion(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-                int properties = characteristic.getProperties();
-                String uuid = characteristic.getUuid().toString();
-                
-                // 写入成功后，确保通知已启用
-                if ((properties & BluetoothGattCharacteristic.PROPERTY_NOTIFY) > 0) {
-                    if (!characteristicNotificationEnabled.containsKey(uuid) || !characteristicNotificationEnabled.get(uuid)) {
-                        Log.d(TAG, "重新启用通知: " + uuid);
-                        boolean success = gatt.setCharacteristicNotification(characteristic, true);
-                        if (success) {
-                            Log.d(TAG, "重新启用通知成功: " + uuid);
-                            characteristicNotificationEnabled.put(uuid, true);
-                            
-                            // 写入CCCD描述符
-                            BluetoothGattDescriptor descriptor = characteristic.getDescriptor(
-                                UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
-                            if (descriptor != null) {
-                                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                                boolean writeResult = gatt.writeDescriptor(descriptor);
-                                if (!writeResult) {
-                                    Log.e(TAG, "写入CCCD描述符失败: " + uuid);
-                                }
+                @Override
+                public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
+                    String uuid = descriptor.getUuid().toString();
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        Log.d(TAG, "描述符写入成功: " + uuid);
+                        // 描述符写入成功后，尝试读取特征值
+                        BluetoothGattCharacteristic characteristic = descriptor.getCharacteristic();
+                        if (characteristic != null) {
+                            String charUuid = characteristic.getUuid().toString();
+                            Log.d(TAG, "尝试读取特征值: " + charUuid);
+                            boolean readResult = gatt.readCharacteristic(characteristic);
+                            if (!readResult) {
+                                Log.e(TAG, "读取特征值失败: " + charUuid);
                             }
-                        } else {
-                            Log.e(TAG, "重新启用通知失败: " + uuid);
-                            characteristicNotificationEnabled.put(uuid, false);
                         }
+                    } else {
+                        Log.e(TAG, "描述符写入失败，状态码: " + status + ", UUID: " + uuid);
                     }
                 }
-            }
 
-            @Override
-            public void onCharacteristicRead(BluetoothGatt gatt,
-                                            BluetoothGattCharacteristic characteristic,
-                                            int status) {
-                String uuid = characteristic.getUuid().toString();
-                characteristicReading.put(uuid, false);  // 重置读取状态
-
-                if (status == BluetoothGatt.GATT_SUCCESS) {
+                @Override
+                public void onCharacteristicChanged(BluetoothGatt gatt,
+                                                   BluetoothGattCharacteristic characteristic) {
+                    String uuid = characteristic.getUuid().toString();
                     byte[] data = characteristic.getValue();
                     
                     // 将字节数组转换为十六进制字符串以便于显示
@@ -835,33 +723,174 @@ public class BluetoothManager {
                     }
                     String hexValue = hexStringBuilder.toString();
                     
-                    // 尝试解析为UTF-8文本，如果失败则使用十六进制表示
-                    String textValue;
-                    try {
-                        textValue = new String(data, "UTF-8");
-                        // 检查是否为可打印字符，否则使用十六进制
-                        if (!isPrintableText(textValue)) {
-                            textValue = hexValue;
-                        }
-                    } catch (Exception e) {
-                        textValue = hexValue;
-                    }
-                    
-                    Log.d(TAG, "读取特征值成功: UUID=" + uuid + ", 值=" + hexValue);
+                    Log.d(TAG, "收到特征值变化: UUID=" + uuid + ", 值=" + hexValue);
                     
                     // 只有在通知开启的情况下才传递数据给WebView
                     if (notificationsEnabled) {
+                        // 直接使用十六进制值，不尝试解析为文本
                         notifyWebView("onCharacteristicChanged",
                             String.format("{\"uuid\":\"%s\",\"value\":\"%s\",\"hexValue\":\"%s\"}",
-                            uuid, textValue, hexValue));
+                            uuid, hexValue, hexValue));
                     } else {
-                        Log.d(TAG, "通知已关闭，不处理读取的数据");
+                        Log.d(TAG, "通知已关闭，不处理收到的数据");
                     }
-                } else {
-                    Log.e(TAG, "读取特征值失败，状态码: " + status);
                 }
-            }
-        });
+
+                @Override
+                public void onCharacteristicWrite(BluetoothGatt gatt,
+                                                 BluetoothGattCharacteristic characteristic,
+                                                 int status) {
+                    // 移除写入超时
+                    mainHandler.removeCallbacksAndMessages(null);
+                    
+                    String uuid = characteristic.getUuid().toString();
+                    String result = status == BluetoothGatt.GATT_SUCCESS ? "success" : "failed";
+                    Log.d(TAG, "写入特征值完成: UUID=" + uuid + ", 状态=" + result);
+                    
+                    // 处理分片发送回调，检查是否有待发送的数据片段
+                    if (status == BluetoothGatt.GATT_SUCCESS && chunkedWriteData.containsKey(uuid)) {
+                        ChunkedWriteData writeData = chunkedWriteData.get(uuid);
+                        int nextIndex = writeData.currentIndex + 1;
+                        
+                        // 如果还有下一片段，延迟一小段时间后发送
+                        if (nextIndex < writeData.chunks.size()) {
+                            writeData.currentIndex = nextIndex;
+                            
+                            // 延迟一定时间后发送下一片，避免设备处理不过来
+                            mainHandler.postDelayed(() -> {
+                                sendNextChunk(characteristic, writeData.chunks, 
+                                           nextIndex, writeData.totalChunks, uuid);
+                            }, 50); // 50ms延迟
+                            
+                            return; // 不通知完成，因为还有更多片段
+                        } else {
+                            // 所有片段已发送完成
+                            Log.d(TAG, "所有数据片段发送完成: UUID=" + uuid);
+                            notifyWebView("onWriteCompleted", 
+                                String.format("{\"uuid\":\"%s\",\"status\":\"success\",\"chunked\":true,\"totalChunks\":%d}",
+                                uuid, writeData.totalChunks));
+                            
+                            // 清理分片数据
+                            chunkedWriteData.remove(uuid);
+                            
+                            // 写入完成后处理通知启用等操作
+                            handleWriteCompletion(gatt, characteristic);
+                            return;
+                        }
+                    }
+                    
+                    // 非分片写入的常规处理
+                    notifyWebView("onWriteCompleted",
+                        String.format("{\"uuid\":\"%s\",\"status\":\"%s\"}",
+                        uuid, result));
+                    
+                    if (status != BluetoothGatt.GATT_SUCCESS) {
+                        notifyWebView("onBluetoothError", "写入失败，错误码: " + status);
+                        return;
+                    }
+
+                    // 写入成功后处理通知启用等操作
+                    handleWriteCompletion(gatt, characteristic);
+                }
+                
+                // 抽取写入完成后的通用处理逻辑
+                private void handleWriteCompletion(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
+                    int properties = characteristic.getProperties();
+                    String uuid = characteristic.getUuid().toString();
+                    
+                    // 写入成功后，确保通知已启用
+                    if ((properties & BluetoothGattCharacteristic.PROPERTY_NOTIFY) > 0) {
+                        if (!characteristicNotificationEnabled.containsKey(uuid) || !characteristicNotificationEnabled.get(uuid)) {
+                            Log.d(TAG, "重新启用通知: " + uuid);
+                            boolean success = gatt.setCharacteristicNotification(characteristic, true);
+                            if (success) {
+                                Log.d(TAG, "重新启用通知成功: " + uuid);
+                                characteristicNotificationEnabled.put(uuid, true);
+                                
+                                // 写入CCCD描述符
+                                BluetoothGattDescriptor descriptor = characteristic.getDescriptor(
+                                    UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+                                if (descriptor != null) {
+                                    descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                                    boolean writeResult = gatt.writeDescriptor(descriptor);
+                                    if (!writeResult) {
+                                        Log.e(TAG, "写入CCCD描述符失败: " + uuid);
+                                    }
+                                }
+                            } else {
+                                Log.e(TAG, "重新启用通知失败: " + uuid);
+                                characteristicNotificationEnabled.put(uuid, false);
+                            }
+                        }
+                    }
+                }
+
+                @Override
+                public void onCharacteristicRead(BluetoothGatt gatt,
+                                                BluetoothGattCharacteristic characteristic,
+                                                int status) {
+                    String uuid = characteristic.getUuid().toString();
+                    characteristicReading.put(uuid, false);  // 重置读取状态
+
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        byte[] data = characteristic.getValue();
+                        
+                        // 将字节数组转换为十六进制字符串以便于显示
+                        StringBuilder hexStringBuilder = new StringBuilder();
+                        for (byte b : data) {
+                            hexStringBuilder.append(String.format("%02X", b));
+                        }
+                        String hexValue = hexStringBuilder.toString();
+                        
+                        // 尝试解析为UTF-8文本，如果失败则使用十六进制表示
+                        String textValue;
+                        try {
+                            textValue = new String(data, "UTF-8");
+                            // 检查是否为可打印字符，否则使用十六进制
+                            if (!isPrintableText(textValue)) {
+                                textValue = hexValue;
+                            }
+                        } catch (Exception e) {
+                            textValue = hexValue;
+                        }
+                        
+                        Log.d(TAG, "读取特征值成功: UUID=" + uuid + ", 值=" + hexValue);
+                        
+                        // 只有在通知开启的情况下才传递数据给WebView
+                        if (notificationsEnabled) {
+                            notifyWebView("onCharacteristicChanged",
+                                String.format("{\"uuid\":\"%s\",\"value\":\"%s\",\"hexValue\":\"%s\"}",
+                                uuid, textValue, hexValue));
+                        } else {
+                            Log.d(TAG, "通知已关闭，不处理读取的数据");
+                        }
+                    } else {
+                        Log.e(TAG, "读取特征值失败，状态码: " + status);
+                    }
+                }
+            });
+        } catch (SecurityException e) {
+            Log.e(TAG, "Security exception when connecting: " + e.getMessage());
+            notifyWebView("onBluetoothError", "缺少必要的蓝牙权限");
+            mainHandler.removeCallbacks(timeoutRunnable);
+            timeoutRunnable = null;
+        }
+    }
+
+    /**
+     * 检查应用是否拥有必要的蓝牙权限
+     * @return 是否拥有权限
+     */
+    private boolean hasBluetoothPermissions() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            // Android 12及以上需要BLUETOOTH_CONNECT权限
+            return context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) 
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        } else {
+            // Android 12以下版本检查BLUETOOTH权限
+            return context.checkSelfPermission(android.Manifest.permission.BLUETOOTH)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        }
     }
 
     private boolean isPrintableText(String text) {
