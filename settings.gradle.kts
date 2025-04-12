@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "My Application"
+rootProject.name = "My App"
 include(":app")
-include(":mylibrary")
+include(":webbridgekit")
