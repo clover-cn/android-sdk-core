@@ -503,6 +503,10 @@
             // 获取设备信息
             getDeviceInfo();
         };
+        
+        function onBluetoothStateChange(msg) {
+            logMessage('蓝牙状态变化通知: ' + msg);
+        }
     </script>
 </body>
 
