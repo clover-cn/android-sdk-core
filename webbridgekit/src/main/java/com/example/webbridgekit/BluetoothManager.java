@@ -27,6 +27,8 @@ public class BluetoothManager {
     private static final int RETRY_DELAY = 1000; // 重试延迟1秒
     private static final int MAX_RETRIES = 2; // 最大重试次数
     private static final int PREFERRED_MTU = 247; // 首选MTU大小
+    private static final long CONNECTION_CHECK_INTERVAL = 5000; // 连接状态检查间隔 5秒
+    private static final int MAX_CONNECTION_TIMEOUT = 20000; // 最大连接等待时间 20秒
     private Context context;
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothGatt bluetoothGatt;
@@ -41,12 +43,32 @@ public class BluetoothManager {
     private boolean mtuConfigured = false;
     private boolean notificationsEnabled = true; // 添加通知控制开关，默认开启
     private Map<String, ChunkedWriteData> chunkedWriteData = new HashMap<>();
+    private boolean isConnected = false; // 新增连接状态标志
+    private Runnable connectionCheckRunnable; // 连接状态检查任务
+    private long lastActiveTime; // 最后一次活动时间
 
     public BluetoothManager(Context context, WebViewBridge webViewBridge) {
         this.context = context;
         this.webViewBridge = webViewBridge;
         this.bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         this.mainHandler = new Handler(Looper.getMainLooper());
+        
+        // 初始化连接状态检查任务
+        connectionCheckRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (isConnected && bluetoothGatt != null) {
+                    // 检查最后活动时间，如果超过最大超时时间则认为连接已断开
+                    if (System.currentTimeMillis() - lastActiveTime > MAX_CONNECTION_TIMEOUT) {
+                        Log.e(TAG, "连接状态检查: 检测到可能的连接丢失，强制断开连接");
+                        disconnect();
+                    } else {
+                        // 如果连接正常，继续定期检查
+                        mainHandler.postDelayed(this, CONNECTION_CHECK_INTERVAL);
+                    }
+                }
+            }
+        };
     }
 
     @JavascriptInterface
@@ -159,22 +181,39 @@ public class BluetoothManager {
 
     @JavascriptInterface
     public void disconnect() {
+        // 停止连接检查
+        mainHandler.removeCallbacks(connectionCheckRunnable);
+        
         if (bluetoothGatt != null) {
             notifyWebView("onBluetoothStateChange", "正在断开连接...");
             
-            // 直接执行断开，状态变化会通过onConnectionStateChange回调通知
-            bluetoothGatt.disconnect();
-            
-            // 设置5秒超时，如果没收到断开回调就强制断开
-            mainHandler.postDelayed(() -> {
-                if (bluetoothGatt != null) {
-                    Log.w(TAG, "Disconnect timeout, forcing close");
-                    bluetoothGatt.close();
-                    bluetoothGatt = null;
-                    currentDevice = null;
-                    notifyWebView("onBluetoothDisconnected", "已断开连接");
-                }
-            }, 2000);
+            try {
+                // 直接执行断开，状态变化会通过onConnectionStateChange回调通知
+                bluetoothGatt.disconnect();
+                
+                // 设置5秒超时，如果没收到断开回调就强制断开
+                mainHandler.postDelayed(() -> {
+                    if (bluetoothGatt != null) {
+                        Log.w(TAG, "Disconnect timeout, forcing close");
+                        try {
+                            bluetoothGatt.close();
+                        } catch (Exception e) {
+                            Log.e(TAG, "关闭GATT连接出错: " + e.getMessage());
+                        }
+                        bluetoothGatt = null;
+                        currentDevice = null;
+                        isConnected = false;
+                        notifyWebView("onBluetoothDisconnected", "已断开连接");
+                    }
+                }, 2000);
+            } catch (Exception e) {
+                Log.e(TAG, "断开连接时发生错误: " + e.getMessage());
+                // 确保即使出现异常也能清理资源
+                bluetoothGatt = null;
+                currentDevice = null;
+                isConnected = false;
+                notifyWebView("onBluetoothDisconnected", "已断开连接");
+            }
         } else {
             notifyWebView("onBluetoothDisconnected", "已断开连接");
         }
@@ -184,16 +223,23 @@ public class BluetoothManager {
             mainHandler.removeCallbacks(timeoutRunnable);
             timeoutRunnable = null;
         }
+        
+        // 重置连接状态
+        isConnected = false;
     }
 
     @JavascriptInterface
     public void writeData(String serviceUUID, String characteristicUUID, String data) {
-        if (bluetoothGatt == null) {
+        // 首先检查连接状态
+        if (bluetoothGatt == null || !isConnected) {
+            Log.e(TAG, "写入数据失败: 设备未连接");
             notifyWebView("onBluetoothError", "未连接到设备");
             return;
         }
 
         try {
+            // 更新最后活动时间
+            lastActiveTime = System.currentTimeMillis();
             BluetoothGattService service = bluetoothGatt.getService(UUID.fromString(serviceUUID));
             if (service == null) {
                 notifyWebView("onBluetoothError", "未找到指定服务");
@@ -271,12 +317,16 @@ public class BluetoothManager {
      */
     @JavascriptInterface
     public void writeRawHexData(String serviceUUID, String characteristicUUID, String hexString) {
-        if (bluetoothGatt == null) {
+        // 首先检查连接状态
+        if (bluetoothGatt == null || !isConnected) {
+            Log.e(TAG, "写入原始十六进制数据失败: 设备未连接");
             notifyWebView("onBluetoothError", "未连接到设备");
             return;
         }
 
         try {
+            // 更新最后活动时间
+            lastActiveTime = System.currentTimeMillis();
             BluetoothGattService service = bluetoothGatt.getService(UUID.fromString(serviceUUID));
             if (service == null) {
                 notifyWebView("onBluetoothError", "未找到指定服务");
@@ -393,10 +443,13 @@ public class BluetoothManager {
     private void sendNextChunk(BluetoothGattCharacteristic characteristic,
                              ArrayList<byte[]> chunks, int index, int totalChunks,
                              String characteristicUUID) {
-        if (index >= chunks.size() || bluetoothGatt == null) {
+        if (index >= chunks.size() || bluetoothGatt == null || !isConnected) {
             Log.d(TAG, "分片发送完成或连接已断开");
             return;
         }
+        
+        // 更新最后活动时间
+        lastActiveTime = System.currentTimeMillis();
         
         byte[] chunk = chunks.get(index);
         
@@ -427,9 +480,25 @@ public class BluetoothManager {
         // 设置5秒超时
         mainHandler.postDelayed(writeTimeoutRunnable, 5000);
         
+        // 再次检查连接状态
+        if (!isConnected || bluetoothGatt == null) {
+            mainHandler.removeCallbacks(writeTimeoutRunnable);
+            Log.e(TAG, "分片发送中断: 设备已断开连接");
+            notifyWebView("onBluetoothError", "设备已断开连接，发送中断");
+            chunkedWriteData.remove(characteristicUUID);
+            return;
+        }
+        
         // 设置数据并写入
         characteristic.setValue(chunk);
-        boolean writeResult = bluetoothGatt.writeCharacteristic(characteristic);
+        boolean writeResult = false;
+        try {
+            writeResult = bluetoothGatt.writeCharacteristic(characteristic);
+        } catch (Exception e) {
+            Log.e(TAG, "写入特征值时发生异常: " + e.getMessage());
+            isConnected = false; // 设置连接状态为断开
+            disconnect(); // 主动断开连接
+        }
         
         if (!writeResult) {
             mainHandler.removeCallbacks(writeTimeoutRunnable);
@@ -484,9 +553,16 @@ public class BluetoothManager {
     }
 
     private void cleanupConnection() {
+        // 停止连接检查
+        mainHandler.removeCallbacks(connectionCheckRunnable);
+        
         // 清理GATT连接
         if (bluetoothGatt != null) {
-            bluetoothGatt.close();
+            try {
+                bluetoothGatt.close();
+            } catch (Exception e) {
+                Log.e(TAG, "关闭GATT连接出错: " + e.getMessage());
+            }
             bluetoothGatt = null;
         }
         
@@ -502,6 +578,9 @@ public class BluetoothManager {
         // 清理特征值状态
         characteristicNotificationEnabled.clear();
         characteristicReading.clear();
+        
+        // 重置连接状态
+        isConnected = false;
     }
 
     private void connectToGattServer(BluetoothDevice device) {
@@ -586,14 +665,33 @@ public class BluetoothManager {
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
                         Log.i(TAG, "Connected to GATT server: " + gatt.getDevice().getAddress());
                         
+                        // 设置连接状态为已连接
+                        isConnected = true;
+                        
+                        // 更新最后活动时间
+                        lastActiveTime = System.currentTimeMillis();
+                        
+                        // 启动连接状态检查
+                        mainHandler.postDelayed(connectionCheckRunnable, CONNECTION_CHECK_INTERVAL);
+                        
                         // 设置更高的连接优先级以提高传输速度和稳定性
-                        boolean priorityResult = gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+                        boolean priorityResult = false;
+                        try {
+                            priorityResult = gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+                        } catch (Exception e) {
+                            Log.e(TAG, "设置连接优先级出错: " + e.getMessage());
+                        }
                         Log.d(TAG, "Set high priority result: " + priorityResult);
                         
                         // 配置MTU大小
                         if (!mtuConfigured) {
                             Log.d(TAG, "Requesting MTU size: " + PREFERRED_MTU);
-                            boolean mtuResult = gatt.requestMtu(PREFERRED_MTU);
+                            boolean mtuResult = false;
+                            try {
+                                mtuResult = gatt.requestMtu(PREFERRED_MTU);
+                            } catch (Exception e) {
+                                Log.e(TAG, "请求MTU出错: " + e.getMessage());
+                            }
                             if (!mtuResult) {
                                 Log.e(TAG, "Failed to request MTU");
                             }
@@ -603,14 +701,26 @@ public class BluetoothManager {
                         
                         // 延迟发现服务，给设备一些时间稳定连接
                         mainHandler.postDelayed(() -> {
-                            if (bluetoothGatt != null) {
-                                bluetoothGatt.discoverServices();
+                            if (bluetoothGatt != null && isConnected) {
+                                try {
+                                    bluetoothGatt.discoverServices();
+                                } catch (Exception e) {
+                                    Log.e(TAG, "发现服务出错: " + e.getMessage());
+                                    disconnect(); // 出错时断开连接
+                                }
                             }
                         }, 500); // 增加延迟到500ms
                     } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                         Log.i(TAG, "Disconnected from GATT server. Status: " + status);
                         String deviceAddress = device != null ? device.getAddress() : "未知设备";
                         Log.d(TAG, "Device " + deviceAddress + " disconnected, retry count: " + retryCount);
+                        
+                        // 停止连接状态检查
+                        mainHandler.removeCallbacks(connectionCheckRunnable);
+                        
+                        // 更新连接状态
+                        isConnected = false;
+                        
                         cleanupConnection();
                         notifyWebView("onBluetoothDisconnected", deviceAddress);
                     } else {
@@ -695,14 +805,26 @@ public class BluetoothManager {
                     String uuid = descriptor.getUuid().toString();
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         Log.d(TAG, "描述符写入成功: " + uuid);
+                        // 更新最后活动时间
+                        lastActiveTime = System.currentTimeMillis();
+                        
                         // 描述符写入成功后，尝试读取特征值
                         BluetoothGattCharacteristic characteristic = descriptor.getCharacteristic();
-                        if (characteristic != null) {
+                        if (characteristic != null && isConnected) {
                             String charUuid = characteristic.getUuid().toString();
                             Log.d(TAG, "尝试读取特征值: " + charUuid);
-                            boolean readResult = gatt.readCharacteristic(characteristic);
-                            if (!readResult) {
-                                Log.e(TAG, "读取特征值失败: " + charUuid);
+                            try {
+                                boolean readResult = gatt.readCharacteristic(characteristic);
+                                if (!readResult) {
+                                    Log.e(TAG, "读取特征值失败: " + charUuid);
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "读取特征值时发生异常: " + e.getMessage());
+                                // 检测到异常时更新连接状态
+                                if (isConnected) {
+                                    isConnected = false;
+                                    disconnect(); // 主动断开连接
+                                }
                             }
                         }
                     } else {
@@ -713,6 +835,9 @@ public class BluetoothManager {
                 @Override
                 public void onCharacteristicChanged(BluetoothGatt gatt,
                                                    BluetoothGattCharacteristic characteristic) {
+                    // 更新最后活动时间
+                    lastActiveTime = System.currentTimeMillis();
+                    
                     String uuid = characteristic.getUuid().toString();
                     byte[] data = characteristic.getValue();
                     
@@ -740,6 +865,9 @@ public class BluetoothManager {
                 public void onCharacteristicWrite(BluetoothGatt gatt,
                                                  BluetoothGattCharacteristic characteristic,
                                                  int status) {
+                    // 更新最后活动时间
+                    lastActiveTime = System.currentTimeMillis();
+                    
                     // 移除写入超时
                     mainHandler.removeCallbacksAndMessages(null);
                     
@@ -829,6 +957,9 @@ public class BluetoothManager {
                 public void onCharacteristicRead(BluetoothGatt gatt,
                                                 BluetoothGattCharacteristic characteristic,
                                                 int status) {
+                    // 更新最后活动时间
+                    lastActiveTime = System.currentTimeMillis();
+                    
                     String uuid = characteristic.getUuid().toString();
                     characteristicReading.put(uuid, false);  // 重置读取状态
 
@@ -921,11 +1052,11 @@ public class BluetoothManager {
         if (!isBluetoothSupported()) {
             return "{\"supported\":false,\"enabled\":false,\"connected\":false}";
         }
-        boolean connected = bluetoothGatt != null;
+        // 使用isConnected标志而不仅仅依赖bluetoothGatt != null
         return String.format(
             "{\"supported\":true,\"enabled\":%b,\"connected\":%b}",
             isBluetoothEnabled(),
-            connected
+            isConnected
         );
     }
 
