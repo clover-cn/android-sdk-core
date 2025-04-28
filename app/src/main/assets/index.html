@@ -72,6 +72,40 @@
 <body>
     <h1>设备控制</h1>
 
+    <!-- App通信部分 -->
+    <div class="section">
+        <div class="section-title">App通信功能</div>
+        
+        <!-- 发送消息给App的部分 -->
+        <div style="margin-bottom: 15px;">
+            <div style="margin-bottom: 10px; font-weight: bold; color: #333;">发送消息到App</div>
+            <select id="messageType" style="padding: 10px; margin-right: 5px;">
+                <option value="text">文本消息</option>
+                <option value="json">JSON数据</option>
+                <option value="action">操作指令</option>
+            </select>
+            <input type="text" id="messageContent" placeholder="输入消息内容" value="Hello from H5!"
+                style="padding: 10px; width: 200px; margin-right: 5px;">
+            <button class="button" style="background-color: #9C27B0;" onclick="sendCustomMessageToApp()">发送</button>
+        </div>
+        
+        <!-- 预定义消息按钮 -->
+        <div style="margin-bottom: 15px;">
+            <button class="button" style="background-color: #FF5722; margin-right: 5px;" onclick="sendUserInfoToApp()">发送用户信息</button>
+            <button class="button" style="background-color: #00BCD4; margin-right: 5px;" onclick="sendPageDataToApp()">发送页面数据</button>
+            <button class="button" style="background-color: #8BC34A;" onclick="requestAppAction()">请求App操作</button>
+        </div>
+        
+        <!-- 接收App消息的部分 -->
+        <div style="margin-top: 20px; border-top: 1px dashed #ccc; padding-top: 15px;">
+            <div style="margin-bottom: 10px; font-weight: bold; color: #333;">接收来自App的消息</div>
+            <div id="appMessageResult" style="margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px; min-height: 50px;">
+                等待App消息...
+            </div>
+            <div id="deviceInfo" style="margin-top: 10px; font-size: 0.8em; color: #666; padding: 5px;"></div>
+        </div>
+    </div>
+
     <!-- 相机扫描部分 -->
     <div class="section">
         <div class="section-title">扫码功能</div>
@@ -286,6 +320,174 @@
             logMessage('设备通知已' + (enabled ? '开启' : '关闭'));
         }
 
+        // 接收来自App的消息
+        window.onAppMessage = function(message) {
+            logMessage('收到App消息: ' + JSON.stringify(message));
+            
+            // 获取消息类型和数据
+            const type = message.type || 'unknown';
+            const data = message.data || {};
+            
+            // 更新UI显示
+            const resultElement = document.getElementById('appMessageResult');
+            
+            // 根据消息类型设置不同背景色
+            let bgColor = '#f5f5f5';
+            if (type === 'appMessage') bgColor = '#E3F2FD';
+            else if (type === 'notification') bgColor = '#FFECB3';
+            else if (type === 'response') bgColor = '#E8F5E9';
+            
+            resultElement.style.backgroundColor = bgColor;
+            
+            // 格式化显示消息
+            let displayContent = `
+                <div style="font-weight: bold;">消息类型: ${type}</div>
+                <div style="margin-top: 5px;">时间戳: ${new Date().toLocaleTimeString()}</div>
+                <pre style="margin-top: 10px; white-space: pre-wrap; word-break: break-word;">${JSON.stringify(data, null, 2)}</pre>
+            `;
+            
+            resultElement.innerHTML = displayContent;
+        };
+        
+        // 发送自定义消息到App
+        function sendCustomMessageToApp() {
+            try {
+                const type = document.getElementById('messageType').value;
+                const content = document.getElementById('messageContent').value || 'Hello from H5!';
+                
+                let data = {};
+                
+                // 根据选择的类型创建不同格式的数据
+                switch(type) {
+                    case 'text':
+                        data = { text: content };
+                        break;
+                    case 'json':
+                        try {
+                            // 尝试将输入解析为JSON
+                            data = JSON.parse(content);
+                        } catch(e) {
+                            data = {
+                                text: content,
+                                note: "用户输入的不是有效JSON，已转换为文本"
+                            };
+                        }
+                        break;
+                    case 'action':
+                        data = {
+                            action: content,
+                            params: {
+                                timestamp: Date.now()
+                            }
+                        };
+                        break;
+                }
+                
+                // 创建消息对象
+                const messageData = {
+                    type: "h5Message",
+                    data: data
+                };
+                
+                // 发送到App
+                MessageBridge.sendMessageToApp(JSON.stringify(messageData));
+                logMessage('已发送自定义消息: ' + JSON.stringify(data));
+                
+            } catch (e) {
+                logMessage('发送消息错误: ' + e.message);
+            }
+        }
+        
+        // 发送用户信息到App
+        function sendUserInfoToApp() {
+            try {
+                const messageData = {
+                    type: "userInfo",
+                    data: {
+                        userId: "user_" + Math.floor(Math.random() * 10000),
+                        username: "WebUser",
+                        loginTime: new Date().toISOString(),
+                        sessionInfo: {
+                            id: "sess_" + Date.now(),
+                            expiresIn: 3600
+                        },
+                        preferences: {
+                            theme: "dark",
+                            notifications: true
+                        }
+                    }
+                };
+                
+                MessageBridge.sendMessageToApp(JSON.stringify(messageData));
+                logMessage('已发送用户信息到App');
+                
+            } catch (e) {
+                logMessage('发送用户信息错误: ' + e.message);
+            }
+        }
+        
+        // 发送页面数据到App
+        function sendPageDataToApp() {
+            try {
+                const messageData = {
+                    type: "pageData",
+                    data: {
+                        url: window.location.href,
+                        title: document.title,
+                        timestamp: Date.now(),
+                        metrics: {
+                            viewportWidth: window.innerWidth,
+                            viewportHeight: window.innerHeight,
+                            devicePixelRatio: window.devicePixelRatio
+                        },
+                        performance: {
+                            loadTime: performance.timing.loadEventEnd - performance.timing.navigationStart,
+                            domReady: performance.timing.domComplete - performance.timing.domLoading
+                        }
+                    }
+                };
+                
+                MessageBridge.sendMessageToApp(JSON.stringify(messageData));
+                logMessage('已发送页面数据到App');
+                
+            } catch (e) {
+                logMessage('发送页面数据错误: ' + e.message);
+            }
+        }
+        
+        // 请求App执行操作
+        function requestAppAction() {
+            try {
+                const messageData = {
+                    type: "action",
+                    data: {
+                        actionType: "openNativeDialog",
+                        title: "来自H5的请求",
+                        message: "这是H5请求App执行的一个操作",
+                        options: ["确定", "取消"],
+                        requestId: "req_" + Date.now()
+                    }
+                };
+                
+                MessageBridge.sendMessageToApp(JSON.stringify(messageData));
+                logMessage('已发送操作请求到App');
+                
+            } catch (e) {
+                logMessage('发送操作请求错误: ' + e.message);
+            }
+        }
+        
+        // 获取设备信息
+        function getDeviceInfo() {
+            try {
+                let info = JSON.parse(MessageBridge.getDeviceInfo());
+                document.getElementById('deviceInfo').textContent =
+                    '设备信息: ' + info.manufacturer + ' ' + info.model + ', Android ' + info.osVersion;
+            } catch (e) {
+                console.error('获取设备信息失败', e);
+            }
+        }
+        
         // 页面加载完成后检查蓝牙状态
         window.onload = function () {
             checkBluetoothStatus();
@@ -297,6 +499,9 @@
             } catch (e) {
                 console.error('获取通知状态失败', e);
             }
+            
+            // 获取设备信息
+            getDeviceInfo();
         };
     </script>
 </body>

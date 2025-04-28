@@ -10,12 +10,23 @@ import android.webkit.WebSettings;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import androidx.webkit.WebSettingsCompat;
+import org.json.JSONObject;
+import java.util.ArrayList;
+import java.util.List;
 
 public class WebViewBridge implements CameraManager.WebViewCallback {
     private Activity activity;
     private WebView webView;
     private BluetoothManager bluetoothManager;
     private CameraManager cameraManager;
+    private MessageManager messageManager;
+    
+    // 消息监听器接口
+    public interface MessageListener {
+        void onMessageReceived(String type, JSONObject data);
+    }
+    
+    private List<MessageListener> messageListeners = new ArrayList<>();
 
     public WebViewBridge(Activity activity, WebView webView) {
         this.activity = activity;
@@ -55,9 +66,13 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
         // 相机管理器可以立即初始化
         cameraManager = new CameraManager(activity, this);
         
+        // 初始化消息管理器
+        messageManager = new MessageManager(activity, this);
+        
         // 添加JavaScript接口
         webView.addJavascriptInterface(bluetoothManager, "BluetoothInterface");
         webView.addJavascriptInterface(cameraManager, "CameraManager");
+        webView.addJavascriptInterface(messageManager, "MessageBridge");
     }
 
     public void handleActivityResult(int requestCode, int resultCode, Intent data) {
@@ -83,5 +98,45 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
     // 新增：用于执行JavaScript代码
     public void evaluateJavascript(String script) {
         activity.runOnUiThread(() -> webView.evaluateJavascript(script, null));
+    }
+    
+    /**
+     * 向H5发送消息
+     * @param type 消息类型
+     * @param data 消息数据
+     */
+    public void sendMessageToH5(String type, Object data) {
+        if (messageManager != null) {
+            messageManager.sendMessageToH5(type, data);
+        }
+    }
+    
+    /**
+     * 注册消息监听器
+     * @param listener 监听器
+     */
+    public void addMessageListener(MessageListener listener) {
+        if (!messageListeners.contains(listener)) {
+            messageListeners.add(listener);
+        }
+    }
+    
+    /**
+     * 移除消息监听器
+     * @param listener 监听器
+     */
+    public void removeMessageListener(MessageListener listener) {
+        messageListeners.remove(listener);
+    }
+    
+    /**
+     * 当收到来自H5的消息时通知所有监听器
+     * @param type 消息类型
+     * @param data 消息数据
+     */
+    public void onMessageReceived(String type, JSONObject data) {
+        for (MessageListener listener : messageListeners) {
+            listener.onMessageReceived(type, data);
+        }
     }
 }
