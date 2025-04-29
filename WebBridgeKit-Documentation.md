@@ -348,6 +348,7 @@ WebViewBridge(activity: Activity, webView: WebView)
 ### MessageListener 接口
 
 ```kotlin
+// 接收来自H5消息
 interface MessageListener {
     void onMessageReceived(String type, JSONObject data);
 }
