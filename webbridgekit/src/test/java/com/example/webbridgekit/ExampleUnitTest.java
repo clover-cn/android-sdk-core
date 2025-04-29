@@ -1,4 +1,4 @@
-package com.example.webbridgekit;
+package com.webbridgesdk.webbridgekit;
 
 import org.junit.Test;
 

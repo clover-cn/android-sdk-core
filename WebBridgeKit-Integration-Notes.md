@@ -25,7 +25,7 @@
 
 ```kotlin
 android {
-    namespace = "com.example.webbridgekit"  // 根据实际情况修改
+    namespace = "com.webbridgesdk.webbridgekit"  // 根据实际情况修改
     
     // 其他配置...
     
@@ -82,7 +82,7 @@ afterEvaluate {
 
 ### 2.1 包名冲突问题
 
-当前库使用 `com.example.webbridgekit` 作为包名，这可能与其他库冲突。在正式项目中，请使用公司专有域名，如：
+当前库使用 `com.webbridgesdk.webbridgekit` 作为包名，这可能与其他库冲突。在正式项目中，请使用公司专有域名，如：
 
 ```kotlin
 namespace = "com.yourcompany.webbridgekit"
@@ -381,13 +381,13 @@ class CameraManager(context: Context, callback: WebViewCallback) {
 
 ```proguard
 # 保留 JavaScript 接口
--keepclassmembers class com.example.webbridgekit.BluetoothManager {
+-keepclassmembers class com.webbridgesdk.webbridgekit.BluetoothManager {
     @android.webkit.JavascriptInterface <methods>;
 }
--keepclassmembers class com.example.webbridgekit.CameraManager {
+-keepclassmembers class com.webbridgesdk.webbridgekit.CameraManager {
     @android.webkit.JavascriptInterface <methods>;
 }
--keepclassmembers class com.example.webbridgekit.MessageManager {
+-keepclassmembers class com.webbridgesdk.webbridgekit.MessageManager {
     @android.webkit.JavascriptInterface <methods>;
 }
 
@@ -395,7 +395,7 @@ class CameraManager(context: Context, callback: WebViewCallback) {
 -keep class com.google.zxing.** { *; }
 
 # 保留 WebViewCallback 接口
--keep interface com.example.webbridgekit.CameraManager$WebViewCallback { *; }
+-keep interface com.webbridgesdk.webbridgekit.CameraManager$WebViewCallback { *; }
 ```
 
 ### 9.2 配置 R8

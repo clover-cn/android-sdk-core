@@ -1,4 +1,4 @@
-package com.example.webbridgekit;
+package com.webbridgesdk.webbridgekit;
 
 import com.journeyapps.barcodescanner.CaptureActivity;
 

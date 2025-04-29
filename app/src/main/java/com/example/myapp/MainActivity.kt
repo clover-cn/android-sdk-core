@@ -17,7 +17,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import com.example.webbridgekit.WebViewBridge
+import com.webbridgesdk.webbridgekit.WebViewBridge
 import org.json.JSONException
 import org.json.JSONObject
 

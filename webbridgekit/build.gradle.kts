@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.webbridgekit"
+    namespace = "com.webbridgesdk.webbridgekit"
     compileSdk = 35
 
     defaultConfig {

@@ -1,4 +1,4 @@
-package com.example.webbridgekit;
+package com.webbridgesdk.webbridgekit;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;

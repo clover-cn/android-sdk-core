@@ -1,4 +1,4 @@
-package com.example.webbridgekit;
+package com.webbridgesdk.webbridgekit;
 
 import android.content.Context;
 
@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
     public void useAppContext() {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals("com.example.webbridgekit.test", appContext.getPackageName());
+        assertEquals("com.webbridgesdk.webbridgekit.test", appContext.getPackageName());
     }
 }

@@ -171,7 +171,7 @@ override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) 
 如需接收从 H5 发送的消息，实现 MessageListener 接口：
 
 ```kotlin
-import com.example.webbridgekit.WebViewBridge
+import com.webbridgesdk.webbridgekit.WebViewBridge
 class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -358,7 +358,7 @@ interface MessageListener {
 
 ### 1. 包名冲突
 
-当前库使用 `com.example.webbridgekit` 包名，若您需要修改，确保同步更改：
+当前库使用 `com.webbridgesdk.webbridgekit` 包名，若您需要修改，确保同步更改：
 - AndroidManifest.xml 中的 package 属性
 - 所有 Java/Kotlin 文件的包声明
 - 库模块的 build.gradle.kts 中的 namespace
@@ -385,7 +385,7 @@ interface MessageListener {
 
 ```proguard
 # WebBridgeKit
--keep class com.example.webbridgekit.** { *; }
+-keep class com.webbridgesdk.webbridgekit.** { *; }
 
 # ZXing
 -keep class com.google.zxing.** { *; }
