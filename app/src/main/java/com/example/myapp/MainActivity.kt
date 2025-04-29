@@ -187,7 +187,9 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
     private fun sendMessageToH5() {
         try {
             // 随机选择一个消息类型
-            val type = messageTypes[System.currentTimeMillis().toInt() % messageTypes.size]
+            // 使用安全的取模方法，避免整数溢出问题
+            val index = (System.currentTimeMillis() % messageTypes.size).toInt()
+            val type = messageTypes[index]
             
             // 创建消息数据
             val messageData = when (type) {
