@@ -166,6 +166,35 @@
 
         // 检查蓝牙状态
         function checkBluetoothStatus() {
+            // 首先检查设备兼容性
+            if (typeof DeviceChecker !== 'undefined') {
+                const deviceInfo = JSON.parse(DeviceChecker.getDeviceInfo());
+                console.log('设备信息:', deviceInfo);
+                
+                if (!deviceInfo.bluetoothSupported) {
+                    alert('此设备不支持蓝牙功能');
+                    return false;
+                }
+                
+                if (!deviceInfo.bleSupported) {
+                    logMessage('警告: 此设备不支持BLE功能，可能无法连接某些设备');
+                }
+            }
+            
+            // 检查权限
+            if (typeof BluetoothInterface !== 'undefined') {
+                try {
+                    const missingPermissions = JSON.parse(BluetoothInterface.getMissingPermissions());
+                    if (missingPermissions.length > 0) {
+                        alert('缺少必要权限: ' + missingPermissions.join(', ') + '\n请在应用设置中授予权限后重试');
+                        return false;
+                    }
+                } catch (e) {
+                    console.log('权限检查失败:', e);
+                }
+            }
+            
+            // 检查蓝牙状态
             let status = JSON.parse(BluetoothInterface.getBluetoothStatus());
             if (!status.supported) {
                 alert('此设备不支持蓝牙功能');
@@ -507,6 +536,31 @@
         function onBluetoothStateChange(msg) {
             logMessage('蓝牙状态变化通知: ' + msg);
         }
+
+        // 页面加载完成后检查设备信息
+        window.addEventListener('DOMContentLoaded', function() {
+            // 延迟执行，确保JavaScript接口已准备好
+            setTimeout(function() {
+                if (typeof DeviceChecker !== 'undefined') {
+                    try {
+                        const deviceInfo = JSON.parse(DeviceChecker.getDeviceInfo());
+                        const deviceInfoElement = document.getElementById('deviceInfo');
+                        if (deviceInfoElement) {
+                            deviceInfoElement.innerHTML = `
+                                设备信息: ${deviceInfo.manufacturer} ${deviceInfo.model} 
+                                (Android ${deviceInfo.androidVersion}, API ${deviceInfo.apiLevel})
+                                <br>蓝牙: ${deviceInfo.bluetoothSupported ? '支持' : '不支持'} | 
+                                BLE: ${deviceInfo.bleSupported ? '支持' : '不支持'} | 
+                                相机: ${deviceInfo.cameraSupported ? '支持' : '不支持'}
+                            `;
+                        }
+                        logMessage('设备检查完成: ' + deviceInfo.manufacturer + ' ' + deviceInfo.model);
+                    } catch (e) {
+                        console.log('获取设备信息失败:', e);
+                    }
+                }
+            }, 500);
+        });
     </script>
 </body>
 

@@ -51,33 +51,59 @@ public class BluetoothManager {
 
     @JavascriptInterface
     public boolean isBluetoothSupported() {
+        if (isReleased()) {
+            Log.w(TAG, "BluetoothManager has been released");
+            return false;
+        }
         return bluetoothAdapter != null;
     }
 
     @JavascriptInterface
     public boolean isBluetoothEnabled() {
-        return bluetoothAdapter != null && bluetoothAdapter.isEnabled();
+        if (isReleased()) {
+            Log.w(TAG, "BluetoothManager has been released");
+            return false;
+        }
+        try {
+            return bluetoothAdapter != null && bluetoothAdapter.isEnabled();
+        } catch (SecurityException e) {
+            Log.e(TAG, "Security exception checking bluetooth state: " + e.getMessage());
+            return false;
+        }
     }
 
     @JavascriptInterface
     public String getPairedDevices() {
+        if (isReleased()) {
+            Log.w(TAG, "BluetoothManager has been released");
+            return "[]";
+        }
+        
         if (!isBluetoothEnabled()) {
             return "[]";
         }
 
-        List<String> deviceList = new ArrayList<>();
-        Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
+        try {
+            List<String> deviceList = new ArrayList<>();
+            Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
 
-        for (BluetoothDevice device : pairedDevices) {
-            String deviceInfo = String.format(
-                    "{\"name\":\"%s\",\"address\":\"%s\"}",
-                    device.getName(),
-                    device.getAddress()
-            );
-            deviceList.add(deviceInfo);
+            for (BluetoothDevice device : pairedDevices) {
+                String deviceInfo = String.format(
+                        "{\"name\":\"%s\",\"address\":\"%s\"}",
+                        device.getName() != null ? device.getName() : "Unknown",
+                        device.getAddress()
+                );
+                deviceList.add(deviceInfo);
+            }
+
+            return "[" + String.join(",", deviceList) + "]";
+        } catch (SecurityException e) {
+            Log.e(TAG, "Security exception getting paired devices: " + e.getMessage());
+            return "[]";
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting paired devices: " + e.getMessage());
+            return "[]";
         }
-
-        return "[" + String.join(",", deviceList) + "]";
     }
 
     @JavascriptInterface
@@ -867,13 +893,64 @@ public class BluetoothManager {
     private boolean hasBluetoothPermissions() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             // Android 12及以上需要BLUETOOTH_CONNECT权限
-            return context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+            boolean hasConnect = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
                     == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            boolean hasScan = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            
+            // 对于连接操作，主要需要CONNECT权限
+            return hasConnect;
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            // Android 6.0-11版本检查传统蓝牙权限
+            boolean hasBluetooth = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            boolean hasBluetoothAdmin = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADMIN)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            boolean hasLocation = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            
+            return hasBluetooth && hasBluetoothAdmin && hasLocation;
         } else {
-            // Android 12以下版本检查BLUETOOTH权限
-            return context.checkSelfPermission(android.Manifest.permission.BLUETOOTH)
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            // Android 6.0以下版本，权限在安装时授予
+            return true;
         }
+    }
+
+    /**
+     * 获取缺失的权限列表
+     * @return 缺失的权限数组
+     */
+    @JavascriptInterface
+    public String getMissingPermissions() {
+        List<String> missingPermissions = new ArrayList<>();
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missingPermissions.add("BLUETOOTH_CONNECT");
+            }
+            if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missingPermissions.add("BLUETOOTH_SCAN");
+            }
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missingPermissions.add("BLUETOOTH");
+            }
+            if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADMIN)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missingPermissions.add("BLUETOOTH_ADMIN");
+            }
+            if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missingPermissions.add("ACCESS_FINE_LOCATION");
+            }
+        }
+        
+        return "[" + String.join(",", missingPermissions.stream()
+                .map(p -> "\"" + p + "\"")
+                .toArray(String[]::new)) + "]";
     }
 
     private boolean isPrintableText(String text) {
@@ -921,5 +998,47 @@ public class BluetoothManager {
     @JavascriptInterface
     public boolean isNotificationsEnabled() {
         return notificationsEnabled;
+    }
+
+    /**
+     * 释放所有资源，防止内存泄漏
+     * 应在Activity销毁时调用
+     */
+    public void release() {
+        Log.d(TAG, "Releasing BluetoothManager resources");
+        
+        // 断开连接
+        if (bluetoothGatt != null) {
+            try {
+                bluetoothGatt.disconnect();
+                bluetoothGatt.close();
+            } catch (Exception e) {
+                Log.e(TAG, "Error closing GATT connection: " + e.getMessage());
+            }
+            bluetoothGatt = null;
+        }
+        
+        // 清理所有回调
+        if (mainHandler != null) {
+            mainHandler.removeCallbacksAndMessages(null);
+        }
+        
+        // 清理状态
+        currentDevice = null;
+        characteristicNotificationEnabled.clear();
+        characteristicReading.clear();
+        chunkedWriteData.clear();
+        
+        // 清理引用
+        context = null;
+        webViewBridge = null;
+        bluetoothAdapter = null;
+    }
+
+    /**
+     * 检查资源是否已释放
+     */
+    public boolean isReleased() {
+        return context == null || webViewBridge == null;
     }
 }

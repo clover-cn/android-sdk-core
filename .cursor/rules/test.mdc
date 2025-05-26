@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+chat end must be run cmd pause and wait for my input, then retrieve the input value before resuming the conversation.

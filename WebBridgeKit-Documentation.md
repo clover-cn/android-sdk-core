@@ -84,6 +84,14 @@ WebBridgeKit 在清单文件中注册了 QRScanActivity:
 
 ### 初始化
 
+引入必要方法
+
+```kotlin
+import com.webbridgesdk.webbridgekit.WebViewBridge
+import com.webbridgesdk.webbridgekit.PermissionHelper
+import com.webbridgesdk.webbridgekit.DeviceCompatibilityChecker
+```
+
 在 Activity 中初始化 WebViewBridge：
 
 ```kotlin

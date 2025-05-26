@@ -15,6 +15,127 @@
 10. [WebView 兼容性](#10-webview-兼容性)
 11. [总结与最佳实践](#11-总结与最佳实践)
 
+## 兼容性和稳定性最佳实践
+
+引入必要方法：
+
+```kotlin
+import com.webbridgesdk.webbridgekit.WebViewBridge
+import com.webbridgesdk.webbridgekit.PermissionHelper
+import com.webbridgesdk.webbridgekit.DeviceCompatibilityChecker
+```
+
+
+
+### 1. 设备兼容性检查
+
+在初始化WebBridgeKit之前，建议先检查设备兼容性：
+
+```kotlin
+
+// 检查设备兼容性
+val compatibilityChecker = DeviceCompatibilityChecker(this)
+if (!compatibilityChecker.isAndroidVersionSupported()) {
+    // 处理不支持的Android版本
+    showUnsupportedVersionDialog()
+    return
+}
+
+// 获取设备信息
+val deviceInfo = compatibilityChecker.getDeviceInfo()
+Log.d("DeviceInfo", deviceInfo)
+```
+
+### 2. 权限管理最佳实践
+
+使用PermissionHelper统一管理权限：
+
+```kotlin
+
+// 检查所有必需权限
+val missingPermissions = PermissionHelper.getAllMissingPermissions(this)
+if (missingPermissions.isNotEmpty()) {
+    // 请求缺失的权限
+    requestPermissions(missingPermissions.toTypedArray(), PERMISSION_REQUEST_CODE)
+}
+
+// 分别检查蓝牙和相机权限
+if (!PermissionHelper.hasAllBluetoothPermissions(this)) {
+    // 请求蓝牙权限
+}
+
+if (!PermissionHelper.hasAllCameraPermissions(this)) {
+    // 请求相机权限
+}
+```
+
+### 3. 资源管理
+
+确保在Activity生命周期中正确管理资源：
+
+```kotlin
+
+class MainActivity : ComponentActivity() {
+    private lateinit var webViewBridge: WebViewBridge
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // 初始化WebViewBridge
+        webViewBridge = WebViewBridge(this, webView)
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        // 释放资源，防止内存泄漏
+        webViewBridge.release()
+    }
+}
+```
+
+### 4. 错误处理和重试机制
+
+```kotlin
+// 处理连接失败
+webViewBridge.addMessageListener { type, data ->
+    when (type) {
+        "bluetoothError" -> {
+            val error = data.getString("message")
+            if (error.contains("连接失败次数过多")) {
+                // 建议用户检查设备状态
+                showRetryDialog()
+            }
+        }
+    }
+}
+```
+
+### 5. JavaScript端最佳实践
+
+```javascript
+// 检查设备兼容性
+const deviceInfo = JSON.parse(DeviceChecker.getDeviceInfo());
+console.log('Device info:', deviceInfo);
+
+if (!deviceInfo.bluetoothSupported) {
+    alert('此设备不支持蓝牙功能');
+    return;
+}
+
+// 检查权限
+const missingPermissions = JSON.parse(BluetoothInterface.getMissingPermissions());
+if (missingPermissions.length > 0) {
+    alert('缺少必要权限: ' + missingPermissions.join(', '));
+    return;
+}
+
+// 连接前检查蓝牙状态
+const status = JSON.parse(BluetoothInterface.getBluetoothStatus());
+if (!status.enabled) {
+    alert('请先开启蓝牙');
+    return;
+}
+```
+
 ## 1. AAR 发布前的准备
 
 在将 WebBridgeKit 打包为 AAR 文件前，请确保完成以下准备工作：

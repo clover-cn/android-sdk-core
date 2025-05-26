@@ -18,6 +18,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.webbridgesdk.webbridgekit.WebViewBridge
+import com.webbridgesdk.webbridgekit.PermissionHelper
+import com.webbridgesdk.webbridgekit.DeviceCompatibilityChecker
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -27,25 +29,6 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
     private var floatView: View? = null
     
     private val TAG = "MainActivity"
-
-    private val permissions: Array<String>
-        get() {
-            val basePermissions = arrayOf(
-                Manifest.permission.CAMERA,
-                Manifest.permission.BLUETOOTH,
-                Manifest.permission.BLUETOOTH_ADMIN
-            )
-
-            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Android 12 (API 31)及以上版本需要这些额外权限
-                basePermissions + arrayOf(
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.BLUETOOTH_SCAN
-                )
-            } else {
-                basePermissions
-            }
-        }
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -71,6 +54,15 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 全局设备兼容性检查
+        val compatibilityChecker = DeviceCompatibilityChecker(this)
+        if (!compatibilityChecker.isAndroidVersionSupported()) {
+            Toast.makeText(this, "设备不兼容，应用将退出", Toast.LENGTH_LONG).show()
+            Log.e(TAG, "设备不兼容：Android版本过低")
+            finish()
+            return
+        }
+
         webView = WebView(this)
         setContentView(webView)
 
@@ -78,22 +70,36 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
     }
 
     private fun checkAndRequestPermissions() {
-        // 过滤出未授权的权限
-        val permissionsToRequest = permissions.filter { permission ->
-            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
-        }.toTypedArray()
-
-        if (permissionsToRequest.isEmpty()) {
+        // 使用PermissionHelper获取所有缺失的权限
+        val missingPermissions = PermissionHelper.getAllMissingPermissions(this)
+        
+        if (missingPermissions.isEmpty()) {
             Log.d(TAG, "所有权限已经获取，直接加载WebView")
             loadWebView()
         } else {
-            Log.d(TAG, "请求以下权限: ${permissionsToRequest.joinToString(", ")}")
-            requestPermissionLauncher.launch(permissionsToRequest)
+            Log.d(TAG, "请求以下权限: ${missingPermissions.joinToString(", ")}")
+            requestPermissionLauncher.launch(missingPermissions.toTypedArray())
         }
     }
 
     private fun loadWebView() {
         try {
+            // 获取设备信息并记录
+            val compatibilityChecker = DeviceCompatibilityChecker(this)
+            val deviceInfo = compatibilityChecker.getDeviceInfo()
+            Log.d(TAG, "设备信息: $deviceInfo")
+            
+            // 检查关键功能支持情况
+            if (!compatibilityChecker.isBluetoothSupported()) {
+                Log.w(TAG, "警告：设备不支持蓝牙功能")
+                Toast.makeText(this, "警告：设备不支持蓝牙功能", Toast.LENGTH_SHORT).show()
+            }
+            
+            if (!compatibilityChecker.isCameraSupported()) {
+                Log.w(TAG, "警告：设备不支持相机功能")
+                Toast.makeText(this, "警告：设备不支持相机功能", Toast.LENGTH_SHORT).show()
+            }
+            
             webViewBridge = WebViewBridge(this, webView)
             // 添加消息监听器
             webViewBridge.addMessageListener(this)

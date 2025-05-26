@@ -20,6 +20,7 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
     private BluetoothManager bluetoothManager;
     private CameraManager cameraManager;
     private MessageManager messageManager;
+    private DeviceCompatibilityChecker compatibilityChecker;
     
     // 消息监听器接口
     public interface MessageListener {
@@ -31,6 +32,13 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
     public WebViewBridge(Activity activity, WebView webView) {
         this.activity = activity;
         this.webView = webView;
+        
+        // 首先检查设备兼容性
+        compatibilityChecker = new DeviceCompatibilityChecker(activity);
+        if (!compatibilityChecker.isAndroidVersionSupported()) {
+            throw new UnsupportedOperationException("Android version not supported. Minimum required: Android 5.0 (API 21)");
+        }
+        
         setupWebView();
         initManagers();
     }
@@ -73,6 +81,7 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
         webView.addJavascriptInterface(bluetoothManager, "BluetoothInterface");
         webView.addJavascriptInterface(cameraManager, "CameraManager");
         webView.addJavascriptInterface(messageManager, "MessageBridge");
+        webView.addJavascriptInterface(compatibilityChecker, "DeviceChecker");
     }
 
     public void handleActivityResult(int requestCode, int resultCode, Intent data) {
@@ -137,6 +146,32 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
     public void onMessageReceived(String type, JSONObject data) {
         for (MessageListener listener : messageListeners) {
             listener.onMessageReceived(type, data);
+        }
+    }
+
+    /**
+     * 获取设备兼容性信息
+     */
+    public String getDeviceCompatibilityInfo() {
+        return compatibilityChecker.getDeviceInfo();
+    }
+
+    /**
+     * 释放所有资源
+     */
+    public void release() {
+        if (bluetoothManager != null) {
+            bluetoothManager.release();
+        }
+        
+        messageListeners.clear();
+        
+        // 清理WebView
+        if (webView != null) {
+            webView.removeJavascriptInterface("BluetoothInterface");
+            webView.removeJavascriptInterface("CameraManager");
+            webView.removeJavascriptInterface("MessageBridge");
+            webView.removeJavascriptInterface("DeviceChecker");
         }
     }
 }
