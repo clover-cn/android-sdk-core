@@ -10,7 +10,7 @@ WebBridgeKit 是一个 Android 库，旨在为嵌入式 WebView 提供原生功�
 
 ## 安装与配置
 
-### Gradle 配置
+### 方法一：Gradle 配置
 
 APP引用一个 Gradle 项目模块（即项目内的另一个子模块）
 
@@ -30,13 +30,25 @@ dependencies {
 }
 ```
 
-### 引入AAR文件
+### 方法二：引入AAR文件
 
 ```kotlin
 // 导入libs下所有的aar
 implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
-// 导入指定aar
+// 或者导入指定aar
 implementation(files("libs/webbridgekit-debug.aar"))
+
+// Android 官方提供的 WebView 增强库
+implementation("androidx.webkit:webkit:1.7.0")
+
+// 用于二维码扫描的 ZXing
+implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+
+// CameraX 依赖项
+implementation("androidx.camera:camera-core:1.3.1")
+implementation("androidx.camera:camera-camera2:1.3.1")
+implementation("androidx.camera:camera-lifecycle:1.3.1")
+implementation("androidx.camera:camera-view:1.3.1")
 ```
 
 根据文件方式二选一
