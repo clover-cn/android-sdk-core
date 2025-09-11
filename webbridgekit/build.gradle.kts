@@ -15,11 +15,14 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            isMinifyEnabled = false
         }
     }
     compileOptions {
@@ -29,21 +32,20 @@ android {
 }
 
 dependencies {
-    // Android 官方提供的 WebView 增强库
-    implementation("androidx.webkit:webkit:1.7.0")
+    // Android 官方提供的 WebView 增强库 - 移除重复依赖
+    implementation(libs.androidx.webkit)
 
     // 用于二维码扫描的 ZXing
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
-    // CameraX 依赖项
-    implementation("androidx.camera:camera-core:1.3.1")
-    implementation("androidx.camera:camera-camera2:1.3.1")
-    implementation("androidx.camera:camera-lifecycle:1.3.1")
-    implementation("androidx.camera:camera-view:1.3.1")
+    // 移除未使用的 CameraX 依赖项（项目使用 ZXing 进行二维码扫描）
+    // implementation("androidx.camera:camera-core:1.3.1")
+    // implementation("androidx.camera:camera-camera2:1.3.1")
+    // implementation("androidx.camera:camera-lifecycle:1.3.1")
+    // implementation("androidx.camera:camera-view:1.3.1")
 
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
-    implementation(libs.androidx.webkit)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

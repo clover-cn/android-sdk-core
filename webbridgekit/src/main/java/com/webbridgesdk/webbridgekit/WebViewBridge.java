@@ -13,6 +13,7 @@ import androidx.webkit.WebSettingsCompat;
 import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class WebViewBridge implements CameraManager.WebViewCallback {
     private Activity activity;
@@ -27,7 +28,8 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
         void onMessageReceived(String type, JSONObject data);
     }
     
-    private List<MessageListener> messageListeners = new ArrayList<>();
+    // 消息监听器列表 - 使用线程安全的集合
+    private final List<MessageListener> messageListeners = new CopyOnWriteArrayList<>();
 
     public WebViewBridge(Activity activity, WebView webView) {
         this.activity = activity;

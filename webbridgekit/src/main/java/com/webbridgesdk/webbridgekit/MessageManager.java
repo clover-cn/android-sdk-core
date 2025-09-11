@@ -2,6 +2,7 @@ package com.webbridgesdk.webbridgekit;
 
 import android.app.Activity;
 import android.webkit.JavascriptInterface;
+import android.util.Log;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -9,6 +10,7 @@ import org.json.JSONObject;
  * MessageManager类 - 用于处理App与H5之间的双向通信
  */
 public class MessageManager {
+    private static final String TAG = "MessageManager";
     private Activity activity;
     private WebViewBridge webViewBridge;
 
@@ -35,7 +37,9 @@ public class MessageManager {
             
             activity.runOnUiThread(() -> webViewBridge.evaluateJavascript(script));
         } catch (JSONException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to send message to H5: " + e.getMessage(), e);
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected error sending message to H5: " + e.getMessage(), e);
         }
     }
 
@@ -53,7 +57,9 @@ public class MessageManager {
             // 将消息分发给注册的监听器
             webViewBridge.onMessageReceived(type, data);
         } catch (JSONException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to parse message from H5: " + e.getMessage(), e);
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected error processing message from H5: " + e.getMessage(), e);
         }
     }
     
@@ -71,7 +77,10 @@ public class MessageManager {
             info.put("osVersion", android.os.Build.VERSION.RELEASE);
             return info.toString();
         } catch (JSONException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to create device info JSON: " + e.getMessage(), e);
+            return "{}";
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected error getting device info: " + e.getMessage(), e);
             return "{}";
         }
     }

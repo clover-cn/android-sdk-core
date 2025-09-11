@@ -1,21 +1,32 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# WebBridgeKit ProGuard Rules
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# 保持 JavaScript 接口类不被混淆
+-keepclassmembers class com.webbridgesdk.webbridgekit.** {
+    @android.webkit.JavascriptInterface <methods>;
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# 保持所有公共 API 类
+-keep public class com.webbridgesdk.webbridgekit.WebViewBridge { *; }
+-keep public class com.webbridgesdk.webbridgekit.PermissionHelper { *; }
+-keep public class com.webbridgesdk.webbridgekit.DeviceCompatibilityChecker { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# 保持接口和回调
+-keep interface com.webbridgesdk.webbridgekit.WebViewBridge$MessageListener { *; }
+-keep interface com.webbridgesdk.webbridgekit.CameraManager$WebViewCallback { *; }
+
+# ZXing 相关
+-keep class com.google.zxing.** { *; }
+-keep class com.journeyapps.barcodescanner.** { *; }
+
+# 蓝牙相关
+-keep class android.bluetooth.** { *; }
+
+# JSON 相关
+-keep class org.json.** { *; }
+
+# 保持调试信息
+-keepattributes SourceFile,LineNumberTable
+-keepattributes *Annotation*
+
+# 避免警告
+-dontwarn com.webbridgesdk.webbridgekit.**
