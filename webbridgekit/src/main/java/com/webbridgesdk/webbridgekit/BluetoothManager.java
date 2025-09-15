@@ -189,13 +189,26 @@ public class BluetoothManager {
             notifyWebView("onBluetoothStateChange", "正在断开连接...");
 
             // 直接执行断开，状态变化会通过onConnectionStateChange回调通知
-            bluetoothGatt.disconnect();
+            try {
+                // Android 12+ 可能因缺少 BLUETOOTH_CONNECT 权限抛出 SecurityException
+                bluetoothGatt.disconnect();
+            } catch (SecurityException se) {
+                Log.e(TAG, "Missing BLUETOOTH_CONNECT permission on disconnect: " + se.getMessage());
+                notifyWebView("onBluetoothError", "缺少必要的蓝牙权限");
+                return;
+            }
 
             // 设置5秒超时，如果没收到断开回调就强制断开
             mainHandler.postDelayed(() -> {
                 if (bluetoothGatt != null) {
                     Log.w(TAG, "Disconnect timeout, forcing close");
-                    bluetoothGatt.close();
+                    try {
+                        // Android 12+ 关闭 GATT 也需 BLUETOOTH_CONNECT 权限
+                        bluetoothGatt.close();
+                    } catch (SecurityException se) {
+                        Log.e(TAG, "Missing BLUETOOTH_CONNECT permission on close: " + se.getMessage());
+                        notifyWebView("onBluetoothError", "缺少必要的蓝牙权限");
+                    }
                     bluetoothGatt = null;
                     currentDevice = null;
                     notifyWebView("onBluetoothDisconnected", "已断开连接");
@@ -460,7 +473,17 @@ public class BluetoothManager {
 
         // 设置数据并写入
         characteristic.setValue(chunk);
-        boolean writeResult = bluetoothGatt.writeCharacteristic(characteristic);
+        boolean writeResult;
+        try {
+            // Android 12+ 写入特征值需要 BLUETOOTH_CONNECT 权限
+            writeResult = bluetoothGatt.writeCharacteristic(characteristic);
+        } catch (SecurityException se) {
+            mainHandler.removeCallbacks(writeTimeoutRunnable);
+            Log.e(TAG, "Missing BLUETOOTH_CONNECT permission on writeCharacteristic: " + se.getMessage());
+            notifyWebView("onBluetoothError", "缺少必要的蓝牙权限");
+            chunkedWriteData.remove(characteristicUUID);
+            return;
+        }
 
         if (!writeResult) {
             mainHandler.removeCallbacks(writeTimeoutRunnable);
@@ -517,7 +540,12 @@ public class BluetoothManager {
     private void cleanupConnection() {
         // 清理GATT连接
         if (bluetoothGatt != null) {
-            bluetoothGatt.close();
+            try {
+                // Android 12+ 关闭 GATT 也需 BLUETOOTH_CONNECT 权限
+                bluetoothGatt.close();
+            } catch (SecurityException se) {
+                Log.e(TAG, "Missing BLUETOOTH_CONNECT permission on close: " + se.getMessage());
+            }
             bluetoothGatt = null;
         }
 
@@ -1010,8 +1038,11 @@ public class BluetoothManager {
         // 断开连接
         if (bluetoothGatt != null) {
             try {
+                // 断开与关闭在 Android 12+ 需要 BLUETOOTH_CONNECT 权限
                 bluetoothGatt.disconnect();
                 bluetoothGatt.close();
+            } catch (SecurityException se) {
+                Log.e(TAG, "Missing BLUETOOTH_CONNECT permission when releasing: " + se.getMessage());
             } catch (Exception e) {
                 Log.e(TAG, "Error closing GATT connection: " + e.getMessage());
             }
