@@ -300,9 +300,27 @@
         function logMessage(message) {
             const log = document.getElementById('messageLog');
             const line = document.createElement('div');
-            line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
+            const text = '[' + new Date().toLocaleTimeString() + '] ' + message;
+            line.textContent = text;
             log.appendChild(line);
             log.scrollTop = log.scrollHeight;
+            console.log('[WebBridgeKit H5] ' + message);
+            mirrorLogToNative(text);
+        }
+        // 将 H5 页面日志同步到 Android Logcat，便于 USB 连接电脑调试。
+        function mirrorLogToNative(text) {
+            if (!window.WebBridge || typeof WebBridge.invoke !== 'function') {
+                return;
+            }
+            WebBridge.invoke('message', 'sendToApp', {
+                type: 'h5Log',
+                data: {
+                    message: text,
+                    timestamp: Date.now()
+                }
+            }).catch(function () {
+                // 调试日志上报失败时不影响页面主流程。
+            });
         }
         // 显示错误信息
         function showError(prefix, error) {

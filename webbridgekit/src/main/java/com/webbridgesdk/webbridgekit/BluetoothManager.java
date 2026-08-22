@@ -373,6 +373,7 @@ public class BluetoothManager {
             return;
         }
 
+        String writeTimeoutKey = characteristicUUID;
         try {
             BluetoothGattService service = bluetoothGatt.getService(UUID.fromString(serviceUUID));
             if (service == null) {
@@ -386,6 +387,7 @@ public class BluetoothManager {
                 notifyWebView("onBluetoothError", "未找到指定特征值");
                 return;
             }
+            writeTimeoutKey = characteristic.getUuid().toString();
 
             // 检查特征值是否支持写入
             int properties = characteristic.getProperties();
@@ -408,6 +410,10 @@ public class BluetoothManager {
                 notifyWebView("onBluetoothError", "写入操作超时");
             };
             mainHandler.postDelayed(writeTimeoutRunnable, 5000); // 5秒超时
+            Runnable previousWriteTimeout = writeTimeouts.put(writeTimeoutKey, writeTimeoutRunnable);
+            if (previousWriteTimeout != null) {
+                mainHandler.removeCallbacks(previousWriteTimeout);
+            }
 
             // 通知开始写入
             notifyWebView("onBluetoothStateChange", "正在发送数据...");
@@ -418,6 +424,7 @@ public class BluetoothManager {
 
             if (!writeResult) {
                 mainHandler.removeCallbacks(writeTimeoutRunnable);
+                writeTimeouts.remove(writeTimeoutKey);
                 notifyWebView("onBluetoothError", "写入操作失败");
                 return;
             }
@@ -427,6 +434,10 @@ public class BluetoothManager {
         } catch (IllegalArgumentException e) {
             notifyWebView("onBluetoothError", "无效的UUID格式");
         } catch (SecurityException e) {
+            Runnable writeTimeout = writeTimeouts.remove(writeTimeoutKey);
+            if (writeTimeout != null) {
+                mainHandler.removeCallbacks(writeTimeout);
+            }
             notifyWebView("onBluetoothError", "缺少必要的蓝牙权限");
         }
     }
@@ -457,6 +468,7 @@ public class BluetoothManager {
             return;
         }
 
+        String writeTimeoutKey = characteristicUUID;
         try {
             BluetoothGattService service = bluetoothGatt.getService(UUID.fromString(serviceUUID));
             if (service == null) {
@@ -470,6 +482,7 @@ public class BluetoothManager {
                 notifyWebView("onBluetoothError", "未找到指定特征值");
                 return;
             }
+            writeTimeoutKey = characteristic.getUuid().toString();
 
             // 检查特征值是否支持写入
             int properties = characteristic.getProperties();
@@ -498,6 +511,10 @@ public class BluetoothManager {
                 notifyWebView("onBluetoothError", "写入操作超时");
             };
             mainHandler.postDelayed(writeTimeoutRunnable, 5000); // 5秒超时
+            Runnable previousWriteTimeout = writeTimeouts.put(writeTimeoutKey, writeTimeoutRunnable);
+            if (previousWriteTimeout != null) {
+                mainHandler.removeCallbacks(previousWriteTimeout);
+            }
 
             // 通知开始写入
             notifyWebView("onBluetoothStateChange", "正在发送十六进制数据...");
@@ -508,6 +525,7 @@ public class BluetoothManager {
 
             if (!writeResult) {
                 mainHandler.removeCallbacks(writeTimeoutRunnable);
+                writeTimeouts.remove(writeTimeoutKey);
                 notifyWebView("onBluetoothError", "写入操作失败");
                 return;
             }
@@ -516,8 +534,16 @@ public class BluetoothManager {
         } catch (IllegalArgumentException e) {
             notifyWebView("onBluetoothError", "无效的参数: " + e.getMessage());
         } catch (SecurityException e) {
+            Runnable writeTimeout = writeTimeouts.remove(writeTimeoutKey);
+            if (writeTimeout != null) {
+                mainHandler.removeCallbacks(writeTimeout);
+            }
             notifyWebView("onBluetoothError", "缺少必要的蓝牙权限");
         } catch (Exception e) {
+            Runnable writeTimeout = writeTimeouts.remove(writeTimeoutKey);
+            if (writeTimeout != null) {
+                mainHandler.removeCallbacks(writeTimeout);
+            }
             notifyWebView("onBluetoothError", "发送数据出错: " + e.getMessage());
         }
     }
@@ -610,7 +636,10 @@ public class BluetoothManager {
 
         // 设置5秒超时
         mainHandler.postDelayed(writeTimeoutRunnable, 5000);
-        writeTimeouts.put(characteristicUUID, writeTimeoutRunnable);
+        Runnable previousWriteTimeout = writeTimeouts.put(characteristicUUID, writeTimeoutRunnable);
+        if (previousWriteTimeout != null) {
+            mainHandler.removeCallbacks(previousWriteTimeout);
+        }
 
         // 设置数据并写入
         characteristic.setValue(chunk);

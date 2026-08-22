@@ -301,6 +301,11 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
      */
     override fun onMessageReceived(type: String, data: JSONObject?) {
         runOnUiThread {
+            if (type == "h5Log") {
+                Log.d(TAG, "H5日志: ${data?.optString("message") ?: ""}")
+                return@runOnUiThread
+            }
+
             val messageText = when (type) {
                 "h5Message" -> "收到H5普通消息"
                 "userInfo" -> "收到用户信息"
