@@ -265,6 +265,17 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
             case "getPairedDevices":
                 replySuccess(replyProxy, id, new JSONObject().put("devices", new JSONArray(bluetoothManager.getPairedDevices())));
                 break;
+            case "startDiscovery":
+                bluetoothManager.startDiscovery();
+                replySuccess(replyProxy, id, new JSONObject().put("accepted", true));
+                break;
+            case "stopDiscovery":
+                bluetoothManager.stopDiscovery();
+                replySuccess(replyProxy, id, new JSONObject().put("accepted", true));
+                break;
+            case "getDiscoveredDevices":
+                replySuccess(replyProxy, id, new JSONObject().put("devices", new JSONArray(bluetoothManager.getDiscoveredDevices())));
+                break;
             case "connect": {
                 String macAddress = payload.optString("macAddress", "");
                 if (!ValidationUtils.isValidMacAddress(macAddress)) {
@@ -348,6 +359,17 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
                 break;
             case "getPairedDevices":
                 sendFallbackSuccess(id, new JSONObject().put("devices", new JSONArray(bluetoothManager.getPairedDevices())));
+                break;
+            case "startDiscovery":
+                bluetoothManager.startDiscovery();
+                sendFallbackSuccess(id, new JSONObject().put("accepted", true));
+                break;
+            case "stopDiscovery":
+                bluetoothManager.stopDiscovery();
+                sendFallbackSuccess(id, new JSONObject().put("accepted", true));
+                break;
+            case "getDiscoveredDevices":
+                sendFallbackSuccess(id, new JSONObject().put("devices", new JSONArray(bluetoothManager.getDiscoveredDevices())));
                 break;
             case "connect": {
                 String macAddress = payload.optString("macAddress", "");

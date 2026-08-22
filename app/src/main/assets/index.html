@@ -85,13 +85,32 @@
 
         #appMessageResult,
         #deviceInfo,
-        #scanResult {
+        #scanResult,
+        #discoveredDevices {
             min-height: 24px;
             padding: 8px;
             border-radius: 4px;
             background: #f1f5f9;
             white-space: pre-wrap;
             word-break: break-word;
+        }
+
+        .device-item {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 6px 0;
+            padding: 8px;
+            border: 1px solid #d9e2ec;
+            border-radius: 4px;
+            background: #ffffff;
+        }
+
+        .device-meta {
+            color: #52606d;
+            font-size: 12px;
         }
 
         #messageLog {
@@ -151,6 +170,12 @@
             <button class="danger" onclick="disconnectDevice()">断开连接</button>
             <button class="secondary" onclick="loadPairedDevices()">读取已配对设备</button>
         </div>
+        <div class="row">
+            <button onclick="startBluetoothDiscovery()">开始搜索</button>
+            <button class="secondary" onclick="stopBluetoothDiscovery()">停止搜索</button>
+            <button class="secondary" onclick="loadDiscoveredDevices()">读取已发现设备</button>
+        </div>
+        <div id="discoveredDevices">尚未搜索设备</div>
         <div class="row">
             <input id="serviceUUID" type="text" placeholder="服务 UUID" value="0000FFF0-0000-1000-8000-00805F9B34FB">
             <input id="characteristicUUID" type="text" placeholder="特征值 UUID"
@@ -340,6 +365,69 @@
                 showError('读取已配对设备失败', error);
             }
         }
+        // 开始搜索蓝牙设备
+        async function startBluetoothDiscovery() {
+            try {
+                await WebBridge.invoke('bluetooth', 'startDiscovery');
+                logMessage('蓝牙搜索已开始');
+            } catch (error) {
+                showError('开始搜索失败', error);
+            }
+        }
+        // 停止搜索蓝牙设备
+        async function stopBluetoothDiscovery() {
+            try {
+                await WebBridge.invoke('bluetooth', 'stopDiscovery');
+                logMessage('蓝牙搜索已停止');
+            } catch (error) {
+                showError('停止搜索失败', error);
+            }
+        }
+        // 读取已发现设备
+        async function loadDiscoveredDevices() {
+            try {
+                const result = await WebBridge.invoke('bluetooth', 'getDiscoveredDevices');
+                renderDiscoveredDevices(result.devices || []);
+                logMessage('已发现设备: ' + JSON.stringify(result.devices || []));
+            } catch (error) {
+                showError('读取已发现设备失败', error);
+            }
+        }
+        // 渲染搜索到的设备
+        function renderDiscoveredDevices(devices) {
+            const box = document.getElementById('discoveredDevices');
+            box.innerHTML = '';
+            if (!devices.length) {
+                box.textContent = '尚未发现设备';
+                return;
+            }
+            devices.forEach(device => {
+                const item = document.createElement('div');
+                item.className = 'device-item';
+
+                const info = document.createElement('div');
+                const name = document.createElement('div');
+                name.textContent = device.name || 'Unknown';
+                const meta = document.createElement('div');
+                meta.className = 'device-meta';
+                const rssi = device.rssi === undefined || device.rssi === null ? '' : device.rssi;
+                meta.textContent = (device.address || '') + ' RSSI: ' + rssi;
+                info.appendChild(name);
+                info.appendChild(meta);
+
+                const button = document.createElement('button');
+                button.className = 'secondary';
+                button.textContent = '填入 MAC';
+                button.onclick = () => {
+                    document.getElementById('macAddress').value = device.address || '';
+                    logMessage('已选择设备: ' + JSON.stringify(device));
+                };
+
+                item.appendChild(info);
+                item.appendChild(button);
+                box.appendChild(item);
+            });
+        }
         // 连接蓝牙设备
         async function connectDevice() {
             try {
@@ -409,6 +497,17 @@
         // 监听蓝牙状态变化事件
         WebBridge.on('bluetooth.stateChanged', data => {
             logMessage('蓝牙状态变化: ' + (data.message || JSON.stringify(data)));
+        });
+        // 监听蓝牙搜索事件
+        WebBridge.on('bluetooth.discoveryStarted', data => {
+            logMessage('蓝牙搜索开始: ' + JSON.stringify(data));
+        });
+        WebBridge.on('bluetooth.discoveryStopped', data => {
+            logMessage('蓝牙搜索停止: ' + JSON.stringify(data));
+        });
+        WebBridge.on('bluetooth.deviceFound', data => {
+            logMessage('发现蓝牙设备: ' + JSON.stringify(data));
+            loadDiscoveredDevices();
         });
         // 监听蓝牙服务发现事件
         WebBridge.on('bluetooth.servicesDiscovered', data => {

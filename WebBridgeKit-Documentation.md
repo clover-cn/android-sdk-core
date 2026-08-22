@@ -46,13 +46,17 @@ SDK manifest 会合并最小权限：
 <uses-permission
     android:name="android.permission.BLUETOOTH_ADMIN"
     android:maxSdkVersion="30" />
+<uses-permission
+    android:name="android.permission.ACCESS_FINE_LOCATION"
+    android:maxSdkVersion="30" />
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 <uses-permission android:name="android.permission.CAMERA" />
 <uses-permission android:name="android.permission.VIBRATE" />
 <uses-feature android:name="android.hardware.camera" android:required="false" />
 ```
 
-当前版本没有 BLE 扫描能力，因此不默认声明 `BLUETOOTH_SCAN` 和 `ACCESS_FINE_LOCATION`。如果宿主自己实现扫描，应由宿主声明并请求对应权限。
+扫描权限只在 H5 显式调用 `startDiscovery` 时请求；直接 `connect` 不会触发扫描权限，也不会隐式搜索设备。
 
 ## Android 接入
 
@@ -210,6 +214,11 @@ try {
 const status = await WebBridge.invoke('bluetooth', 'getStatus');
 const paired = await WebBridge.invoke('bluetooth', 'getPairedDevices');
 
+// 可选：由 H5 自己决定是否先搜索附近 BLE 设备。
+await WebBridge.invoke('bluetooth', 'startDiscovery');
+const discovered = await WebBridge.invoke('bluetooth', 'getDiscoveredDevices');
+await WebBridge.invoke('bluetooth', 'stopDiscovery');
+
 await WebBridge.invoke('bluetooth', 'connect', {
   macAddress: '5C:53:10:7A:1C:80'
 });
@@ -228,11 +237,16 @@ await WebBridge.invoke('bluetooth', 'disconnect');
 ```javascript
 WebBridge.on('bluetooth.connected', data => console.log(data.address));
 WebBridge.on('bluetooth.disconnected', data => console.log(data.address));
+WebBridge.on('bluetooth.discoveryStarted', data => console.log(data.discovering));
+WebBridge.on('bluetooth.discoveryStopped', data => console.log(data.discovering));
+WebBridge.on('bluetooth.deviceFound', data => console.log(data.name, data.address, data.rssi));
 WebBridge.on('bluetooth.servicesDiscovered', data => console.log(data.services));
 WebBridge.on('bluetooth.characteristicChanged', data => console.log(data.hexValue));
 WebBridge.on('bluetooth.writeCompleted', data => console.log(data));
 WebBridge.on('bluetooth.error', data => console.log(data.message));
 ```
+
+`connect` 只按传入的 `macAddress` 直接连接，不会在 SDK 内部自动搜索。需要搜索时，H5 显式调用 `startDiscovery`，收到 `bluetooth.deviceFound` 后自行判断是否连接。
 
 ## 错误码
 

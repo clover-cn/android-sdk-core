@@ -29,6 +29,28 @@ public class PermissionHelper {
             };
         }
     }
+
+    /**
+     * 获取蓝牙搜索相关权限列表
+     */
+    public static String[] getBluetoothScanPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return new String[] {
+                Manifest.permission.BLUETOOTH_SCAN
+            };
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return new String[] {
+                Manifest.permission.BLUETOOTH,
+                Manifest.permission.BLUETOOTH_ADMIN,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            };
+        } else {
+            return new String[] {
+                Manifest.permission.BLUETOOTH,
+                Manifest.permission.BLUETOOTH_ADMIN
+            };
+        }
+    }
     
     /**
      * 获取相机权限列表
@@ -41,6 +63,12 @@ public class PermissionHelper {
 
     public static String[] getRequiredPermissions(String feature, String action) {
         if ("bluetooth".equals(feature)) {
+            if ("startDiscovery".equals(action) || "stopDiscovery".equals(action)) {
+                return getBluetoothScanPermissions();
+            }
+            if ("getDiscoveredDevices".equals(action)) {
+                return new String[0];
+            }
             return getBluetoothPermissions();
         }
         if ("camera".equals(feature) && "scanQr".equals(action)) {
@@ -57,12 +85,15 @@ public class PermissionHelper {
         
         // 添加蓝牙权限
         for (String permission : getBluetoothPermissions()) {
-            permissions.add(permission);
+            addPermissionIfAbsent(permissions, permission);
+        }
+        for (String permission : getBluetoothScanPermissions()) {
+            addPermissionIfAbsent(permissions, permission);
         }
         
         // 添加相机权限
         for (String permission : getCameraPermissions()) {
-            permissions.add(permission);
+            addPermissionIfAbsent(permissions, permission);
         }
         
         return permissions.toArray(new String[0]);
@@ -107,6 +138,20 @@ public class PermissionHelper {
         }
         return missing;
     }
+
+    /**
+     * 获取缺失的蓝牙搜索权限
+     */
+    public static List<String> getMissingBluetoothScanPermissions(Context context) {
+        List<String> missing = new ArrayList<>();
+        for (String permission : getBluetoothScanPermissions()) {
+            if (ContextCompat.checkSelfPermission(context, permission)
+                != PackageManager.PERMISSION_GRANTED) {
+                missing.add(permission);
+            }
+        }
+        return missing;
+    }
     
     /**
      * 获取缺失的相机权限
@@ -128,7 +173,14 @@ public class PermissionHelper {
     public static List<String> getAllMissingPermissions(Context context) {
         List<String> missing = new ArrayList<>();
         missing.addAll(getMissingBluetoothPermissions(context));
+        missing.addAll(getMissingBluetoothScanPermissions(context));
         missing.addAll(getMissingCameraPermissions(context));
         return missing;
+    }
+
+    private static void addPermissionIfAbsent(List<String> permissions, String permission) {
+        if (!permissions.contains(permission)) {
+            permissions.add(permission);
+        }
     }
 } 

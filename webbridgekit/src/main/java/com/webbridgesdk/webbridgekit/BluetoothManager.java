@@ -8,7 +8,12 @@ import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -18,6 +23,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -32,13 +38,16 @@ public class BluetoothManager {
     private static final int PREFERRED_MTU = 247; // 首选MTU大小
     private Context context;
     private BluetoothAdapter bluetoothAdapter;
+    private BluetoothLeScanner bluetoothLeScanner;
     private BluetoothGatt bluetoothGatt;
     private BluetoothDevice currentDevice;
     private Handler mainHandler;
     private WebViewBridge webViewBridge;
     private Runnable timeoutRunnable;
+    private ScanCallback discoveryCallback;
     private int retryCount = 0;
     private String lastMacAddress = null;
+    private Map<String, JSONObject> discoveredDevices = new LinkedHashMap<>();
     private Map<String, Boolean> characteristicNotificationEnabled = new HashMap<>();
     private Map<String, Boolean> characteristicReading = new HashMap<>();
     private boolean mtuConfigured = false;
@@ -106,6 +115,138 @@ public class BluetoothManager {
         } catch (Exception e) {
             Log.e(TAG, "Error getting paired devices: " + e.getMessage());
             return "[]";
+        }
+    }
+
+    public void startDiscovery() {
+        if (isReleased()) {
+            Log.w(TAG, "BluetoothManager has been released");
+            return;
+        }
+
+        if (!isBluetoothEnabled()) {
+            notifyWebView("onBluetoothError", "蓝牙未启用");
+            return;
+        }
+
+        if (!hasBluetoothScanPermission()) {
+            notifyWebView("onBluetoothError", "缺少必要的蓝牙扫描权限");
+            return;
+        }
+
+        if (discoveryCallback != null) {
+            notifyWebView("onDiscoveryStarted", "{}");
+            return;
+        }
+
+        bluetoothLeScanner = bluetoothAdapter.getBluetoothLeScanner();
+        if (bluetoothLeScanner == null) {
+            notifyWebView("onBluetoothError", "设备不支持BLE扫描或蓝牙未就绪");
+            return;
+        }
+
+        discoveredDevices.clear();
+        discoveryCallback = new ScanCallback() {
+            @Override
+            public void onScanResult(int callbackType, ScanResult result) {
+                handleScanResult(result);
+            }
+
+            @Override
+            public void onBatchScanResults(List<ScanResult> results) {
+                for (ScanResult result : results) {
+                    handleScanResult(result);
+                }
+            }
+
+            @Override
+            public void onScanFailed(int errorCode) {
+                Log.e(TAG, "BLE scan failed: " + errorCode);
+                discoveryCallback = null;
+                notifyWebView("onBluetoothError", "蓝牙扫描失败，错误码: " + errorCode);
+                notifyWebView("onDiscoveryStopped", "{}");
+            }
+        };
+
+        ScanSettings settings = new ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build();
+
+        try {
+            bluetoothLeScanner.startScan(null, settings, discoveryCallback);
+            notifyWebView("onDiscoveryStarted", "{}");
+        } catch (SecurityException e) {
+            discoveryCallback = null;
+            notifyWebView("onBluetoothError", "缺少必要的蓝牙扫描权限");
+        } catch (Exception e) {
+            discoveryCallback = null;
+            notifyWebView("onBluetoothError", "启动蓝牙搜索失败: " + e.getMessage());
+        }
+    }
+
+    public void stopDiscovery() {
+        if (discoveryCallback == null) {
+            notifyWebView("onDiscoveryStopped", "{}");
+            return;
+        }
+
+        try {
+            if (bluetoothLeScanner != null) {
+                bluetoothLeScanner.stopScan(discoveryCallback);
+            }
+        } catch (SecurityException e) {
+            Log.e(TAG, "Missing Bluetooth scan permission on stopScan: " + e.getMessage());
+            notifyWebView("onBluetoothError", "缺少必要的蓝牙扫描权限");
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping BLE scan: " + e.getMessage());
+        } finally {
+            discoveryCallback = null;
+            notifyWebView("onDiscoveryStopped", "{}");
+        }
+    }
+
+    public String getDiscoveredDevices() {
+        JSONArray devices = new JSONArray();
+        for (JSONObject device : discoveredDevices.values()) {
+            devices.put(device);
+        }
+        return devices.toString();
+    }
+
+    private void handleScanResult(ScanResult result) {
+        if (result == null || result.getDevice() == null) {
+            return;
+        }
+
+        try {
+            BluetoothDevice device = result.getDevice();
+            String address = device.getAddress();
+            if (address == null || discoveredDevices.containsKey(address)) {
+                return;
+            }
+
+            String name = null;
+            if (result.getScanRecord() != null) {
+                name = result.getScanRecord().getDeviceName();
+            }
+            if (name == null) {
+                try {
+                    name = device.getName();
+                } catch (SecurityException ignored) {
+                    name = null;
+                }
+            }
+
+            JSONObject deviceInfo = new JSONObject();
+            deviceInfo.put("name", name != null ? name : "Unknown");
+            deviceInfo.put("address", address);
+            deviceInfo.put("rssi", result.getRssi());
+            discoveredDevices.put(address, deviceInfo);
+            notifyWebView("onBluetoothDeviceFound", deviceInfo.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Error building discovered device JSON: " + e.getMessage());
+        } catch (SecurityException e) {
+            notifyWebView("onBluetoothError", "缺少必要的蓝牙扫描权限");
         }
     }
 
@@ -935,19 +1076,35 @@ public class BluetoothManager {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             // Android 12及以上需要BLUETOOTH_CONNECT权限
             boolean hasConnect = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                    == PackageManager.PERMISSION_GRANTED;
             return hasConnect;
         } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             // Android 6.0-11版本检查传统蓝牙权限
             boolean hasBluetooth = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH)
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                    == PackageManager.PERMISSION_GRANTED;
             boolean hasBluetoothAdmin = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADMIN)
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                    == PackageManager.PERMISSION_GRANTED;
             return hasBluetooth && hasBluetoothAdmin;
         } else {
             // Android 6.0以下版本，权限在安装时授予
             return true;
         }
+    }
+
+    private boolean hasBluetoothScanPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            return context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN)
+                    == PackageManager.PERMISSION_GRANTED;
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            boolean hasBluetooth = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH)
+                    == PackageManager.PERMISSION_GRANTED;
+            boolean hasBluetoothAdmin = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADMIN)
+                    == PackageManager.PERMISSION_GRANTED;
+            boolean hasLocation = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED;
+            return hasBluetooth && hasBluetoothAdmin && hasLocation;
+        }
+        return true;
     }
 
     /**
@@ -959,16 +1116,16 @@ public class BluetoothManager {
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    != PackageManager.PERMISSION_GRANTED) {
                 missingPermissions.add("BLUETOOTH_CONNECT");
             }
         } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    != PackageManager.PERMISSION_GRANTED) {
                 missingPermissions.add("BLUETOOTH");
             }
             if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADMIN)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    != PackageManager.PERMISSION_GRANTED) {
                 missingPermissions.add("BLUETOOTH_ADMIN");
             }
         }
@@ -1004,6 +1161,8 @@ public class BluetoothManager {
                     payload.put("message", data);
                 } else if ("onBluetoothStateChange".equals(method)) {
                     payload.put("message", data);
+                } else if ("onDiscoveryStarted".equals(method) || "onDiscoveryStopped".equals(method)) {
+                    payload.put("discovering", "onDiscoveryStarted".equals(method));
                 } else if ("onServicesDiscovered".equals(method)) {
                     JSONArray services = new JSONArray();
                     if (data != null && !data.isEmpty()) {
@@ -1040,6 +1199,12 @@ public class BluetoothManager {
                 return "bluetooth.writeCompleted";
             case "onBluetoothStateChange":
                 return "bluetooth.stateChanged";
+            case "onBluetoothDeviceFound":
+                return "bluetooth.deviceFound";
+            case "onDiscoveryStarted":
+                return "bluetooth.discoveryStarted";
+            case "onDiscoveryStopped":
+                return "bluetooth.discoveryStopped";
             default:
                 return "bluetooth.event";
         }
@@ -1051,9 +1216,10 @@ public class BluetoothManager {
         }
         boolean connected = bluetoothGatt != null;
         return String.format(
-                "{\"supported\":true,\"enabled\":%b,\"connected\":%b}",
+                "{\"supported\":true,\"enabled\":%b,\"connected\":%b,\"discovering\":%b}",
                 isBluetoothEnabled(),
-                connected
+                connected,
+                discoveryCallback != null
         );
     }
 
@@ -1072,6 +1238,8 @@ public class BluetoothManager {
      */
     public void release() {
         Log.d(TAG, "Releasing BluetoothManager resources");
+
+        stopDiscovery();
         
         // 断开连接
         if (bluetoothGatt != null) {

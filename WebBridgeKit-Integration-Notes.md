@@ -91,9 +91,10 @@ WebBridge.on('message.fromApp', handler);
 当前 SDK 能力只需要：
 
 - 蓝牙连接/读写：Android 12+ 使用 `BLUETOOTH_CONNECT`；Android 11 及以下使用 `BLUETOOTH` 和 `BLUETOOTH_ADMIN`。
+- 蓝牙搜索：只有 H5 显式调用 `startDiscovery` 时才请求。Android 12+ 使用 `BLUETOOTH_SCAN`；Android 6-11 使用 `BLUETOOTH`、`BLUETOOTH_ADMIN` 和 `ACCESS_FINE_LOCATION`。
 - 二维码扫码：`CAMERA`。
 
-v2 不默认请求 `BLUETOOTH_SCAN` 和 `ACCESS_FINE_LOCATION`，因为当前没有 BLE 扫描能力。后续新增扫描功能时，应作为独立 action 加入权限声明、运行时请求和 H5 API。
+`connect` 不会隐式触发蓝牙搜索。H5 可以直接传 MAC 连接，也可以先调用 `startDiscovery`，监听 `bluetooth.deviceFound` 后再自行决定是否调用 `connect`。
 
 ## Origin 策略
 
