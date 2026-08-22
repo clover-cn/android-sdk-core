@@ -1,7 +1,6 @@
 package com.webbridgesdk.webbridgekit;
 
 import android.app.Activity;
-import android.webkit.JavascriptInterface;
 import android.util.Log;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -30,12 +29,7 @@ public class MessageManager {
             message.put("type", msgType);
             message.put("data", data);
             
-            final String script = String.format(
-                "javascript:window.onAppMessage(%s)",
-                message.toString()
-            );
-            
-            activity.runOnUiThread(() -> webViewBridge.evaluateJavascript(script));
+            activity.runOnUiThread(() -> webViewBridge.emitEvent("message.fromApp", message));
         } catch (JSONException e) {
             Log.e(TAG, "Failed to send message to H5: " + e.getMessage(), e);
         } catch (Exception e) {
@@ -47,7 +41,6 @@ public class MessageManager {
      * JavaScript接口方法，允许H5向App发送消息
      * @param messageJson 消息JSON字符串
      */
-    @JavascriptInterface
     public void sendMessageToApp(String messageJson) {
         try {
             JSONObject message = new JSONObject(messageJson);
@@ -67,7 +60,6 @@ public class MessageManager {
      * 获取当前设备信息
      * @return 设备信息JSON字符串
      */
-    @JavascriptInterface
     public String getDeviceInfo() {
         try {
             JSONObject info = new JSONObject();

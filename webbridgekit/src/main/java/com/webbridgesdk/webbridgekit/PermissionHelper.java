@@ -20,15 +20,12 @@ public class PermissionHelper {
     public static String[] getBluetoothPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return new String[] {
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.BLUETOOTH_CONNECT
             };
         } else {
             return new String[] {
                 Manifest.permission.BLUETOOTH,
-                Manifest.permission.BLUETOOTH_ADMIN,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.BLUETOOTH_ADMIN
             };
         }
     }
@@ -38,9 +35,18 @@ public class PermissionHelper {
      */
     public static String[] getCameraPermissions() {
         return new String[] {
-            Manifest.permission.CAMERA,
-            Manifest.permission.VIBRATE
+            Manifest.permission.CAMERA
         };
+    }
+
+    public static String[] getRequiredPermissions(String feature, String action) {
+        if ("bluetooth".equals(feature)) {
+            return getBluetoothPermissions();
+        }
+        if ("camera".equals(feature) && "scanQr".equals(action)) {
+            return getCameraPermissions();
+        }
+        return new String[0];
     }
     
     /**

@@ -5,15 +5,16 @@ plugins {
 }
 
 android {
-    namespace = "com.example.myapp"
+    namespace = "com.webbridgesdk.demo"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.myapp"
+        applicationId = "com.webbridgesdk.demo"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        setProperty("archivesBaseName", "WebBridgeKit-Demo")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -1,8 +1,7 @@
-package com.example.myapp
+package com.webbridgesdk.demo
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.content.pm.ApplicationInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +17,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.webbridgesdk.webbridgekit.WebViewBridge
+import com.webbridgesdk.webbridgekit.WebViewBridgeConfig
 import com.webbridgesdk.webbridgekit.PermissionHelper
 import com.webbridgesdk.webbridgekit.DeviceCompatibilityChecker
 import org.json.JSONException
@@ -26,8 +26,9 @@ import org.json.JSONObject
 class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
     private lateinit var webView: WebView
     private lateinit var webViewBridge: WebViewBridge
+    private var pendingPermissionCallback: WebViewBridgeConfig.PermissionCallback? = null
     private var floatView: View? = null
-    
+
     private val TAG = "MainActivity"
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -39,15 +40,12 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
         }
 
         val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
-            Log.d(TAG, "所有请求的权限都已获取")
-            loadWebView()
-        } else {
+        pendingPermissionCallback?.onResult(allGranted)
+        pendingPermissionCallback = null
+        if (!allGranted) {
             // 找出哪些权限被拒绝
             val deniedPermissions = permissions.filter { !it.value }.keys.joinToString(", ")
             Toast.makeText(this, "以下权限被拒绝: $deniedPermissions", Toast.LENGTH_LONG).show()
-            // 尝试加载WebView，即使某些权限被拒绝
-            loadWebView()
         }
     }
 
@@ -66,20 +64,7 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
         webView = WebView(this)
         setContentView(webView)
 
-        checkAndRequestPermissions()
-    }
-
-    private fun checkAndRequestPermissions() {
-        // 使用PermissionHelper获取所有缺失的权限
-        val missingPermissions = PermissionHelper.getAllMissingPermissions(this)
-        
-        if (missingPermissions.isEmpty()) {
-            Log.d(TAG, "所有权限已经获取，直接加载WebView")
-            loadWebView()
-        } else {
-            Log.d(TAG, "请求以下权限: ${missingPermissions.joinToString(", ")}")
-            requestPermissionLauncher.launch(missingPermissions.toTypedArray())
-        }
+        loadWebView()
     }
 
     private fun loadWebView() {
@@ -100,10 +85,17 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
                 Toast.makeText(this, "警告：设备不支持相机功能", Toast.LENGTH_SHORT).show()
             }
             
-            webViewBridge = WebViewBridge(this, webView)
+            val bridgeConfig = WebViewBridgeConfig.Builder()
+                .setDebugEnabled((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0)
+                .setPermissionDelegate { feature, action, callback ->
+                    ensureBridgePermission(feature, action, callback)
+                }
+                .build()
+
+            webViewBridge = WebViewBridge(this, webView, bridgeConfig)
             // 添加消息监听器
             webViewBridge.addMessageListener(this)
-            webViewBridge.loadUrl("file:///android_asset/index.html")
+            webViewBridge.loadUrl(webViewBridge.getAssetUrl("index.html"))
             
             // 直接添加应用内悬浮按钮，不需要检查权限
             addFloatingButton()
@@ -111,6 +103,30 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
             Log.e(TAG, "加载WebView时出错", e)
             Toast.makeText(this, "加载页面时出错: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun ensureBridgePermission(
+        feature: String,
+        action: String,
+        callback: WebViewBridgeConfig.PermissionCallback
+    ) {
+        val missingPermissions = PermissionHelper.getRequiredPermissions(feature, action)
+            .filter { permission ->
+                ContextCompat.checkSelfPermission(this, permission) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            }
+
+        if (missingPermissions.isEmpty()) {
+            callback.onResult(true)
+            return
+        }
+
+        if (pendingPermissionCallback != null) {
+            callback.onResult(false)
+            return
+        }
+
+        pendingPermissionCallback = callback
+        requestPermissionLauncher.launch(missingPermissions.toTypedArray())
     }
 
     // 删除checkOverlayPermission方法，因为应用内悬浮窗不需要特殊权限
@@ -350,6 +366,7 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
         // 移除消息监听器
         if (::webViewBridge.isInitialized) {
             webViewBridge.removeMessageListener(this)
+            webViewBridge.release()
         }
     }
     

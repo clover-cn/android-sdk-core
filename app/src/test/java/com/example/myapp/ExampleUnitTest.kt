@@ -1,4 +1,4 @@
-package com.example.myapp
+package com.webbridgesdk.demo
 
 import org.junit.Test
 

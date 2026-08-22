@@ -1,4 +1,4 @@
-package com.example.myapp.ui.theme
+package com.webbridgesdk.demo.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

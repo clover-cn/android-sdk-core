@@ -11,8 +11,11 @@ import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-import android.webkit.JavascriptInterface;
 import android.util.Log;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,8 +42,10 @@ public class BluetoothManager {
     private Map<String, Boolean> characteristicNotificationEnabled = new HashMap<>();
     private Map<String, Boolean> characteristicReading = new HashMap<>();
     private boolean mtuConfigured = false;
+    private int negotiatedMtu = 23;
     private boolean notificationsEnabled = true; // 添加通知控制开关，默认开启
     private Map<String, ChunkedWriteData> chunkedWriteData = new HashMap<>();
+    private Map<String, Runnable> writeTimeouts = new HashMap<>();
 
     public BluetoothManager(Context context, WebViewBridge webViewBridge) {
         this.context = context;
@@ -49,7 +54,6 @@ public class BluetoothManager {
         this.mainHandler = new Handler(Looper.getMainLooper());
     }
 
-    @JavascriptInterface
     public boolean isBluetoothSupported() {
         if (isReleased()) {
             Log.w(TAG, "BluetoothManager has been released");
@@ -58,7 +62,6 @@ public class BluetoothManager {
         return bluetoothAdapter != null;
     }
 
-    @JavascriptInterface
     public boolean isBluetoothEnabled() {
         if (isReleased()) {
             Log.w(TAG, "BluetoothManager has been released");
@@ -72,7 +75,6 @@ public class BluetoothManager {
         }
     }
 
-    @JavascriptInterface
     public String getPairedDevices() {
         if (isReleased()) {
             Log.w(TAG, "BluetoothManager has been released");
@@ -84,19 +86,20 @@ public class BluetoothManager {
         }
 
         try {
-            List<String> deviceList = new ArrayList<>();
+            JSONArray deviceList = new JSONArray();
             Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
 
             for (BluetoothDevice device : pairedDevices) {
-                String deviceInfo = String.format(
-                        "{\"name\":\"%s\",\"address\":\"%s\"}",
-                        device.getName() != null ? device.getName() : "Unknown",
-                        device.getAddress()
-                );
-                deviceList.add(deviceInfo);
+                JSONObject deviceInfo = new JSONObject();
+                deviceInfo.put("name", device.getName() != null ? device.getName() : "Unknown");
+                deviceInfo.put("address", device.getAddress());
+                deviceList.put(deviceInfo);
             }
 
-            return "[" + String.join(",", deviceList) + "]";
+            return deviceList.toString();
+        } catch (JSONException e) {
+            Log.e(TAG, "Error building paired devices JSON: " + e.getMessage());
+            return "[]";
         } catch (SecurityException e) {
             Log.e(TAG, "Security exception getting paired devices: " + e.getMessage());
             return "[]";
@@ -106,7 +109,6 @@ public class BluetoothManager {
         }
     }
 
-    @JavascriptInterface
     public void connectToDevice(String macAddress) {
         if (!isBluetoothEnabled()) {
             notifyWebView("onBluetoothError", "蓝牙未启用");
@@ -183,7 +185,6 @@ public class BluetoothManager {
         }
     }
 
-    @JavascriptInterface
     public void disconnect() {
         if (bluetoothGatt != null) {
             notifyWebView("onBluetoothStateChange", "正在断开连接...");
@@ -225,7 +226,6 @@ public class BluetoothManager {
         }
     }
 
-    @JavascriptInterface
     public void writeData(String serviceUUID, String characteristicUUID, String data) {
         if (bluetoothGatt == null) {
             notifyWebView("onBluetoothError", "未连接到设备");
@@ -256,7 +256,7 @@ public class BluetoothManager {
 
             // 检查数据大小是否超过MTU限制
             byte[] dataBytes = data.getBytes();
-            if (dataBytes.length > 20) { // 默认MTU通常是20字节
+            if (dataBytes.length > getChunkPayloadSize()) {
                 // 改为调用分片方法，而不是返回错误
                 writeRawDataChunked(service, characteristic, dataBytes);
                 return;
@@ -310,7 +310,6 @@ public class BluetoothManager {
      * @param characteristicUUID 特征值UUID
      * @param hexString          十六进制字符串，如"7B864814071027923000280033BD7D"
      */
-    @JavascriptInterface
     public void writeRawHexData(String serviceUUID, String characteristicUUID, String hexString) {
         if (bluetoothGatt == null) {
             notifyWebView("onBluetoothError", "未连接到设备");
@@ -347,7 +346,7 @@ public class BluetoothManager {
             }
 
             // 检查数据大小是否超过MTU限制
-            if (dataBytes.length > 20) { // 默认MTU通常是20字节
+            if (dataBytes.length > getChunkPayloadSize()) {
                 // 改为调用分片方法，而不是返回错误
                 writeRawHexDataChunked(service, characteristic, dataBytes);
                 return;
@@ -392,8 +391,8 @@ public class BluetoothManager {
     private void writeRawHexDataChunked(BluetoothGattService service,
                                         BluetoothGattCharacteristic characteristic,
                                         byte[] data) {
-        final int CHUNK_SIZE = 20; // 每片的最大字节数
-        final int totalChunks = (int) Math.ceil((double) data.length / CHUNK_SIZE);
+        final int chunkSize = getChunkPayloadSize();
+        final int totalChunks = (int) Math.ceil((double) data.length / chunkSize);
 
         Log.d(TAG, "数据大小: " + data.length + "字节，将分为" + totalChunks + "片发送");
         notifyWebView("onBluetoothStateChange",
@@ -401,8 +400,8 @@ public class BluetoothManager {
 
         // 创建队列来存储所有数据片段
         ArrayList<byte[]> chunks = new ArrayList<>();
-        for (int i = 0; i < data.length; i += CHUNK_SIZE) {
-            int end = Math.min(i + CHUNK_SIZE, data.length);
+        for (int i = 0; i < data.length; i += chunkSize) {
+            int end = Math.min(i + chunkSize, data.length);
             byte[] chunk = new byte[end - i];
             System.arraycopy(data, i, chunk, 0, end - i);
             chunks.add(chunk);
@@ -470,6 +469,7 @@ public class BluetoothManager {
 
         // 设置5秒超时
         mainHandler.postDelayed(writeTimeoutRunnable, 5000);
+        writeTimeouts.put(characteristicUUID, writeTimeoutRunnable);
 
         // 设置数据并写入
         characteristic.setValue(chunk);
@@ -503,6 +503,10 @@ public class BluetoothManager {
         ArrayList<byte[]> chunks;  // 所有数据片段
         int currentIndex;          // 当前片段索引
         int totalChunks;           // 总片段数
+    }
+
+    private int getChunkPayloadSize() {
+        return Math.max(20, negotiatedMtu - 3);
     }
 
     /**
@@ -561,6 +565,13 @@ public class BluetoothManager {
         // 清理特征值状态
         characteristicNotificationEnabled.clear();
         characteristicReading.clear();
+        for (Runnable runnable : writeTimeouts.values()) {
+            mainHandler.removeCallbacks(runnable);
+        }
+        writeTimeouts.clear();
+        chunkedWriteData.clear();
+        mtuConfigured = false;
+        negotiatedMtu = 23;
     }
 
     private void connectToGattServer(BluetoothDevice device) {
@@ -659,6 +670,7 @@ public class BluetoothManager {
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         Log.d(TAG, "MTU changed to: " + mtu);
                         mtuConfigured = true;
+                        negotiatedMtu = mtu;
                         // MTU配置成功后，开始发现服务
                         if (bluetoothGatt != null) {
                             bluetoothGatt.discoverServices();
@@ -776,10 +788,11 @@ public class BluetoothManager {
                 public void onCharacteristicWrite(BluetoothGatt gatt,
                                                   BluetoothGattCharacteristic characteristic,
                                                   int status) {
-                    // 移除写入超时
-                    mainHandler.removeCallbacksAndMessages(null);
-
                     String uuid = characteristic.getUuid().toString();
+                    Runnable writeTimeout = writeTimeouts.remove(uuid);
+                    if (writeTimeout != null) {
+                        mainHandler.removeCallbacks(writeTimeout);
+                    }
                     String result = status == BluetoothGatt.GATT_SUCCESS ? "success" : "failed";
                     Log.d(TAG, "写入特征值完成: UUID=" + uuid + ", 状态=" + result);
 
@@ -923,10 +936,6 @@ public class BluetoothManager {
             // Android 12及以上需要BLUETOOTH_CONNECT权限
             boolean hasConnect = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
                     == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            boolean hasScan = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN)
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            
-            // 对于连接操作，主要需要CONNECT权限
             return hasConnect;
         } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             // Android 6.0-11版本检查传统蓝牙权限
@@ -934,10 +943,7 @@ public class BluetoothManager {
                     == android.content.pm.PackageManager.PERMISSION_GRANTED;
             boolean hasBluetoothAdmin = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADMIN)
                     == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            boolean hasLocation = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            
-            return hasBluetooth && hasBluetoothAdmin && hasLocation;
+            return hasBluetooth && hasBluetoothAdmin;
         } else {
             // Android 6.0以下版本，权限在安装时授予
             return true;
@@ -948,7 +954,6 @@ public class BluetoothManager {
      * 获取缺失的权限列表
      * @return 缺失的权限数组
      */
-    @JavascriptInterface
     public String getMissingPermissions() {
         List<String> missingPermissions = new ArrayList<>();
         
@@ -956,10 +961,6 @@ public class BluetoothManager {
             if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 missingPermissions.add("BLUETOOTH_CONNECT");
-            }
-            if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                missingPermissions.add("BLUETOOTH_SCAN");
             }
         } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH)
@@ -969,10 +970,6 @@ public class BluetoothManager {
             if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_ADMIN)
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 missingPermissions.add("BLUETOOTH_ADMIN");
-            }
-            if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                missingPermissions.add("ACCESS_FINE_LOCATION");
             }
         }
         
@@ -999,12 +996,55 @@ public class BluetoothManager {
 
     private void notifyWebView(String method, String data) {
         mainHandler.post(() -> {
-            String js = String.format("javascript:window.%s('%s')", method, data);
-            webViewBridge.evaluateJavascript(js);
+            try {
+                JSONObject payload = new JSONObject();
+                if ("onBluetoothConnected".equals(method) || "onBluetoothDisconnected".equals(method)) {
+                    payload.put("address", data);
+                } else if ("onBluetoothError".equals(method)) {
+                    payload.put("message", data);
+                } else if ("onBluetoothStateChange".equals(method)) {
+                    payload.put("message", data);
+                } else if ("onServicesDiscovered".equals(method)) {
+                    JSONArray services = new JSONArray();
+                    if (data != null && !data.isEmpty()) {
+                        for (String service : data.split(",")) {
+                            services.put(service);
+                        }
+                    }
+                    payload.put("services", services);
+                } else if (data != null && data.trim().startsWith("{")) {
+                    payload = new JSONObject(data);
+                } else {
+                    payload.put("value", data);
+                }
+                webViewBridge.emitEvent(toEventName(method), payload);
+            } catch (JSONException e) {
+                Log.e(TAG, "Failed to emit bluetooth event: " + e.getMessage());
+            }
         });
     }
 
-    @JavascriptInterface
+    private String toEventName(String method) {
+        switch (method) {
+            case "onBluetoothConnected":
+                return "bluetooth.connected";
+            case "onBluetoothDisconnected":
+                return "bluetooth.disconnected";
+            case "onBluetoothError":
+                return "bluetooth.error";
+            case "onServicesDiscovered":
+                return "bluetooth.servicesDiscovered";
+            case "onCharacteristicChanged":
+                return "bluetooth.characteristicChanged";
+            case "onWriteCompleted":
+                return "bluetooth.writeCompleted";
+            case "onBluetoothStateChange":
+                return "bluetooth.stateChanged";
+            default:
+                return "bluetooth.event";
+        }
+    }
+
     public String getBluetoothStatus() {
         if (!isBluetoothSupported()) {
             return "{\"supported\":false,\"enabled\":false,\"connected\":false}";
@@ -1017,13 +1057,11 @@ public class BluetoothManager {
         );
     }
 
-    @JavascriptInterface
     public void setNotificationsEnabled(boolean enabled) {
         this.notificationsEnabled = enabled;
         Log.d(TAG, "蓝牙通知状态已设置为: " + (enabled ? "开启" : "关闭"));
     }
 
-    @JavascriptInterface
     public boolean isNotificationsEnabled() {
         return notificationsEnabled;
     }
@@ -1051,7 +1089,13 @@ public class BluetoothManager {
         
         // 清理所有回调
         if (mainHandler != null) {
-            mainHandler.removeCallbacksAndMessages(null);
+            if (timeoutRunnable != null) {
+                mainHandler.removeCallbacks(timeoutRunnable);
+                timeoutRunnable = null;
+            }
+            for (Runnable runnable : writeTimeouts.values()) {
+                mainHandler.removeCallbacks(runnable);
+            }
         }
         
         // 清理状态

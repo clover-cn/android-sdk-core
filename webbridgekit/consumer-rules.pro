@@ -8,6 +8,9 @@
 
 # 保持所有公共 API 类
 -keep public class com.webbridgesdk.webbridgekit.WebViewBridge { *; }
+-keep public class com.webbridgesdk.webbridgekit.WebViewBridgeConfig { *; }
+-keep public class com.webbridgesdk.webbridgekit.WebViewBridgeConfig$* { *; }
+-keep public class com.webbridgesdk.webbridgekit.BridgeError { *; }
 -keep public class com.webbridgesdk.webbridgekit.PermissionHelper { *; }
 -keep public class com.webbridgesdk.webbridgekit.DeviceCompatibilityChecker { *; }
 

@@ -1,6 +1,5 @@
 package com.webbridgesdk.webbridgekit.util;
 
-import android.text.TextUtils;
 import java.util.regex.Pattern;
 
 /**
@@ -25,7 +24,7 @@ public class ValidationUtils {
      * 验证MAC地址格式
      */
     public static boolean isValidMacAddress(String macAddress) {
-        if (TextUtils.isEmpty(macAddress)) {
+        if (isEmpty(macAddress)) {
             return false;
         }
         return MAC_ADDRESS_PATTERN.matcher(macAddress).matches();
@@ -35,7 +34,7 @@ public class ValidationUtils {
      * 验证UUID格式
      */
     public static boolean isValidUUID(String uuid) {
-        if (TextUtils.isEmpty(uuid)) {
+        if (isEmpty(uuid)) {
             return false;
         }
         return UUID_PATTERN.matcher(uuid).matches();
@@ -45,7 +44,7 @@ public class ValidationUtils {
      * 验证十六进制字符串
      */
     public static boolean isValidHexString(String hexString) {
-        if (TextUtils.isEmpty(hexString)) {
+        if (isEmpty(hexString)) {
             return false;
         }
         // 长度必须是偶数
@@ -59,14 +58,14 @@ public class ValidationUtils {
      * 验证字符串是否为空或null
      */
     public static boolean isEmpty(String str) {
-        return TextUtils.isEmpty(str);
+        return str == null || str.isEmpty();
     }
 
     /**
      * 验证字符串是否非空
      */
     public static boolean isNotEmpty(String str) {
-        return !TextUtils.isEmpty(str);
+        return !isEmpty(str);
     }
 
     /**
@@ -80,6 +79,6 @@ public class ValidationUtils {
      * 安全地获取字符串，提供默认值
      */
     public static String safeString(String str, String defaultValue) {
-        return TextUtils.isEmpty(str) ? defaultValue : str;
+        return isEmpty(str) ? defaultValue : str;
     }
 }

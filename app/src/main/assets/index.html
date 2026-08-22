@@ -1,565 +1,435 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>设备控制</title>
+    <title>WebBridgeKit v2 示例</title>
     <style>
         body {
+            margin: 0;
             padding: 20px;
             font-family: Arial, sans-serif;
+            color: #1f2933;
+            background: #f6f8fa;
         }
 
-        .button {
-            background-color: #4CAF50;
-            border: none;
-            color: white;
-            padding: 15px 32px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-
-        .button.scan {
-            background-color: #2196F3;
-        }
-
-        .status {
-            margin: 10px 0;
-            padding: 10px;
-            border-radius: 4px;
-        }
-
-        .connected {
-            background-color: #dff0d8;
-            color: #3c763d;
-        }
-
-        .disconnected {
-            background-color: #f2dede;
-            color: #a94442;
-        }
-
-        #messageLog {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            height: 200px;
-            overflow-y: auto;
+        h1 {
+            margin: 0 0 16px;
+            font-size: 22px;
         }
 
         .section {
-            margin: 20px 0;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            margin: 14px 0;
+            padding: 14px;
+            border: 1px solid #d9e2ec;
+            border-radius: 6px;
+            background: #ffffff;
         }
 
         .section-title {
-            font-size: 1.2em;
-            font-weight: bold;
             margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 8px 0;
+        }
+
+        input,
+        select {
+            min-width: 220px;
+            padding: 10px;
+            border: 1px solid #bcccdc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        button {
+            padding: 10px 14px;
+            border: 0;
+            border-radius: 4px;
+            color: #ffffff;
+            background: #2563eb;
+            font-size: 14px;
+        }
+
+        button.danger {
+            background: #dc2626;
+        }
+
+        button.secondary {
+            background: #4b5563;
+        }
+
+        label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        #statusDiv {
+            padding: 10px;
+            border-radius: 4px;
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        #statusDiv.connected {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        #appMessageResult,
+        #deviceInfo,
+        #scanResult {
+            min-height: 24px;
+            padding: 8px;
+            border-radius: 4px;
+            background: #f1f5f9;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        #messageLog {
+            height: 220px;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #d9e2ec;
+            border-radius: 6px;
+            background: #111827;
+            color: #e5e7eb;
+            font-family: Consolas, monospace;
+            font-size: 12px;
         }
     </style>
 </head>
 
 <body>
-    <h1>设备控制</h1>
+    <h1>WebBridgeKit v2 示例</h1>
 
-    <!-- App通信部分 -->
     <div class="section">
-        <div class="section-title">App通信功能</div>
-        
-        <!-- 发送消息给App的部分 -->
-        <div style="margin-bottom: 15px;">
-            <div style="margin-bottom: 10px; font-weight: bold; color: #333;">发送消息到App</div>
-            <select id="messageType" style="padding: 10px; margin-right: 5px;">
-                <option value="text">文本消息</option>
-                <option value="json">JSON数据</option>
-                <option value="action">操作指令</option>
+        <div class="section-title">设备信息</div>
+        <div class="row">
+            <button onclick="refreshDeviceInfo()">刷新设备信息</button>
+            <button class="secondary" onclick="refreshBluetoothStatus()">刷新蓝牙状态</button>
+        </div>
+        <div id="deviceInfo">等待设备信息...</div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">App 通信</div>
+        <div class="row">
+            <select id="messageType">
+                <option value="h5Message">普通消息</option>
+                <option value="userInfo">用户信息</option>
+                <option value="action">操作请求</option>
             </select>
-            <input type="text" id="messageContent" placeholder="输入消息内容" value="Hello from H5!"
-                style="padding: 10px; width: 200px; margin-right: 5px;">
-            <button class="button" style="background-color: #9C27B0;" onclick="sendCustomMessageToApp()">发送</button>
+            <input id="messageContent" type="text" value="Hello from H5 v2">
+            <button onclick="sendMessageToApp()">发送到 App</button>
         </div>
-        
-        <!-- 预定义消息按钮 -->
-        <div style="margin-bottom: 15px;">
-            <button class="button" style="background-color: #FF5722; margin-right: 5px;" onclick="sendUserInfoToApp()">发送用户信息</button>
-            <button class="button" style="background-color: #00BCD4; margin-right: 5px;" onclick="sendPageDataToApp()">发送页面数据</button>
-            <button class="button" style="background-color: #8BC34A;" onclick="requestAppAction()">请求App操作</button>
-        </div>
-        
-        <!-- 接收App消息的部分 -->
-        <div style="margin-top: 20px; border-top: 1px dashed #ccc; padding-top: 15px;">
-            <div style="margin-bottom: 10px; font-weight: bold; color: #333;">接收来自App的消息</div>
-            <div id="appMessageResult" style="margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px; min-height: 50px;">
-                等待App消息...
-            </div>
-            <div id="deviceInfo" style="margin-top: 10px; font-size: 0.8em; color: #666; padding: 5px;"></div>
-        </div>
+        <div id="appMessageResult">等待 App 消息...</div>
     </div>
 
-    <!-- 相机扫描部分 -->
     <div class="section">
-        <div class="section-title">扫码功能</div>
-        <button class="button scan" onclick="startScan()">开始扫码</button>
-        <div id="scanResult"></div>
+        <div class="section-title">扫码</div>
+        <div class="row">
+            <button onclick="startScan()">开始扫码</button>
+        </div>
+        <div id="scanResult">等待扫码结果...</div>
     </div>
 
-    <!-- 蓝牙控制部分 -->
     <div class="section">
-        <div class="section-title">蓝牙控制</div>
-        <div id="statusDiv" class="status disconnected">
-            设备状态：未连接
+        <div class="section-title">蓝牙</div>
+        <div id="statusDiv">设备状态：未连接</div>
+        <div class="row">
+            <input id="macAddress" type="text" placeholder="5C:53:10:7A:1C:80" value="5C:53:10:7A:1C:80">
+            <button onclick="connectDevice()">连接设备</button>
+            <button class="danger" onclick="disconnectDevice()">断开连接</button>
+            <button class="secondary" onclick="loadPairedDevices()">读取已配对设备</button>
         </div>
-
-        <div>
-            <input type="text" id="macAddress" placeholder="5C:53:10:7A:1C:80" value="5C:53:10:7A:1C:80"
-                style="padding: 10px; width: 200px;">
-            <button class="button" onclick="connectDevice()">连接设备</button>
-            <button class="button" onclick="disconnectDevice()" style="background-color: #f44336;">断开连接</button>
+        <div class="row">
+            <input id="serviceUUID" type="text" placeholder="服务 UUID" value="0000FFF0-0000-1000-8000-00805F9B34FB">
+            <input id="characteristicUUID" type="text" placeholder="特征值 UUID"
+                value="0000FFF2-0000-1000-8000-00805F9B34FB">
+            <input id="sendData" type="text" placeholder="十六进制数据" value="7B864814071027923000280033BD7D">
+            <button onclick="sendBluetoothData()">发送数据</button>
         </div>
-
-        <div style="margin-top: 20px;">
-            <input type="text" id="serviceUUID" placeholder="服务UUID" value="0000FFF0-0000-1000-8000-00805F9B34FB"
-                style="padding: 10px; width: 200px;">
-            <input type="text" id="characteristicUUID" placeholder="特征值UUID"
-                value="0000FFF2-0000-1000-8000-00805F9B34FB" style="padding: 10px; width: 200px;">
-            <input type="text" id="sendData" placeholder="十六进制数据格式(如：7B86...)" value="7B864814071027923000280033BD7D"
-                style="padding: 10px; width: 200px;">
-            <button class="button" onclick="sendData()">发送数据</button>
-            
-            <div style="margin-top: 10px;">
-                <label style="display: inline-block; margin-right: 10px;">
-                    <input type="checkbox" id="notificationsSwitch" checked onchange="toggleNotifications()">
-                    接收设备通知
-                </label>
-            </div>
-        </div>
+        <label>
+            <input id="notificationsSwitch" type="checkbox" checked onchange="toggleNotifications()">
+            接收设备通知
+        </label>
     </div>
 
-    <div id="messageLog">
-        <!-- 消息日志将在这里显示 -->
-    </div>
+    <div id="messageLog"></div>
 
     <script>
-        // 相机扫描功能
-        function startScan() {
-            CameraManager.startQRCodeScan();
-        }
+        // 初始化 WebBridge
+        const WebBridge = (function () {
+            const pending = new Map();
+            const listeners = new Map();
+            let nativeMode = null;
 
-        window.onQRCodeResult = function (result) {
-            document.getElementById('scanResult').textContent = '扫描结果: ' + result;
-            logMessage('扫描到二维码: ' + result);
-        };
-
-        window.onError = function (error) {
-            logMessage('错误: ' + error);
-        };
-
-        // 检查蓝牙状态
-        function checkBluetoothStatus() {
-            // 首先检查设备兼容性
-            if (typeof DeviceChecker !== 'undefined') {
-                const deviceInfo = JSON.parse(DeviceChecker.getDeviceInfo());
-                console.log('设备信息:', deviceInfo);
-                
-                if (!deviceInfo.bluetoothSupported) {
-                    alert('此设备不支持蓝牙功能');
-                    return false;
+            function bindNative() {
+                if (nativeMode) return true;
+                if (window.WebBridgeNative) {
+                    window.WebBridgeNative.onmessage = function (event) {
+                        handleMessage(event.data);
+                    };
+                    nativeMode = 'webMessage';
+                    return true;
                 }
-                
-                if (!deviceInfo.bleSupported) {
-                    logMessage('警告: 此设备不支持BLE功能，可能无法连接某些设备');
+                if (window.WebBridgeNativeFallback) {
+                    window.__WebBridgeFallbackDispatch = function (message) {
+                        handleMessage(message);
+                    };
+                    nativeMode = 'fallback';
+                    return true;
                 }
+                return false;
             }
-            
-            // 检查权限
-            if (typeof BluetoothInterface !== 'undefined') {
+
+            function postNativeMessage(message) {
+                if (nativeMode === 'webMessage') {
+                    window.WebBridgeNative.postMessage(message);
+                    return;
+                }
+                if (nativeMode === 'fallback') {
+                    window.WebBridgeNativeFallback.postMessage(message);
+                    return;
+                }
+                throw new Error('原生桥未注入');
+            }
+
+            function bridgeUnavailableMessage() {
+                if (!window.WebBridgeNative && !window.WebBridgeNativeFallback) {
+                    return '原生桥未注入';
+                }
+                return '原生桥未就绪';
+            }
+
+            function handleMessage(raw) {
+                let message;
                 try {
-                    const missingPermissions = JSON.parse(BluetoothInterface.getMissingPermissions());
-                    if (missingPermissions.length > 0) {
-                        alert('缺少必要权限: ' + missingPermissions.join(', ') + '\n请在应用设置中授予权限后重试');
-                        return false;
-                    }
-                } catch (e) {
-                    console.log('权限检查失败:', e);
+                    message = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                } catch (error) {
+                    logMessage('桥接消息解析失败: ' + error.message);
+                    return;
+                }
+
+                if (message && message.id && pending.has(message.id)) {
+                    const callbacks = pending.get(message.id);
+                    pending.delete(message.id);
+                    if (message.ok) callbacks.resolve(message.data);
+                    else callbacks.reject(message.error || { code: 'UNKNOWN', message: '未知错误' });
+                    return;
+                }
+
+                if (message && message.event) {
+                    dispatch(message);
                 }
             }
-            
-            // 检查蓝牙状态
-            let status = JSON.parse(BluetoothInterface.getBluetoothStatus());
-            if (!status.supported) {
-                alert('此设备不支持蓝牙功能');
-                return false;
-            }
-            if (!status.enabled) {
-                alert('请开启蓝牙');
-                return false;
-            }
-            return true;
-        }
 
-        // 连接设备
-        function connectDevice() {
-            if (!checkBluetoothStatus()) return;
-            let macAddress = document.getElementById('macAddress').value;
-            if (!macAddress) {
-                alert('请输入MAC地址');
-                return;
+            function dispatch(message) {
+                const handlers = listeners.get(message.event) || [];
+                handlers.forEach(handler => handler(message.data || {}));
             }
 
-            BluetoothInterface.connectToDevice(macAddress);
-            logMessage('正在连接设备: ' + macAddress);
-        }
+            function invoke(feature, action, payload) {
+                if (!bindNative()) {
+                    return Promise.reject({ code: 'BRIDGE_UNAVAILABLE', message: bridgeUnavailableMessage() });
+                }
 
-        // 断开连接
-        function disconnectDevice() {
-            BluetoothInterface.disconnect();
-            logMessage('正在断开连接...');
-        }
-
-        // 发送数据
-        function sendData() {
-            let serviceUUID = document.getElementById('serviceUUID').value;
-            let characteristicUUID = document.getElementById('characteristicUUID').value;
-            let data = document.getElementById('sendData').value;
-
-            if (!serviceUUID || !characteristicUUID || !data) {
-                alert('请填写完整信息');
-                return;
+                const id = 'req_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+                const request = { id, feature, action, payload: payload || {} };
+                return new Promise((resolve, reject) => {
+                    pending.set(id, { resolve, reject });
+                    postNativeMessage(JSON.stringify(request));
+                    setTimeout(() => {
+                        if (pending.has(id)) {
+                            pending.delete(id);
+                            reject({ code: 'TIMEOUT', message: '原生响应超时' });
+                        }
+                    }, 30000);
+                });
             }
 
-            let byteArray = hexStringToByte(data);
-            if (byteArray.length === 0) {
-                return; // 如果转换失败，则退出
+            function on(event, handler) {
+                const handlers = listeners.get(event) || [];
+                handlers.push(handler);
+                listeners.set(event, handlers);
             }
 
-            // 构造一个用于传递原始十六进制数据的对象
-            let rawHexData = data.toUpperCase();
-
-            // 发送到设备，直接传递十六进制字符串
-            BluetoothInterface.writeRawHexData(serviceUUID, characteristicUUID, rawHexData);
-
-            // 创建更好的日志展示
-            let byteValues = Array.from(byteArray).map(b => '0x' + b.toString(16).padStart(2, '0')).join(', ');
-            logMessage('正在发送数据: [' + byteValues + ']');
-        }
-
-        // 记录消息
+            return {
+                invoke,
+                on,
+                __dispatch: dispatch
+            };
+        })();
+        // 绑定 WebBridge 到 window
+        window.WebBridge = WebBridge;
+        // 记录日志
         function logMessage(message) {
-            let log = document.getElementById('messageLog');
-            let time = new Date().toLocaleTimeString();
-            log.innerHTML += `<div>[${time}] ${message}</div>`;
+            const log = document.getElementById('messageLog');
+            const line = document.createElement('div');
+            line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
+            log.appendChild(line);
             log.scrollTop = log.scrollHeight;
         }
-
-        // 处理分片写入完成事件
-        function onWriteCompleted(data) {
+        // 显示错误信息
+        function showError(prefix, error) {
+            const message = error && error.message ? error.message : String(error);
+            logMessage(prefix + ': ' + message);
+        }
+        // 刷新设备信息
+        async function refreshDeviceInfo() {
             try {
-                let result = JSON.parse(data);
-                
-                // 如果是分片写入完成
-                if (result.chunked && result.status === "success") {
-                    logMessage(`分片数据写入完成，共${result.totalChunks}片`);
-                } else {
-                    logMessage(`数据写入${result.status === "success" ? "成功" : "失败"}`);
-                }
-            } catch (e) {
-                logMessage("数据写入结果解析错误: " + e.message);
+                const info = await WebBridge.invoke('device', 'getInfo');
+                document.getElementById('deviceInfo').textContent = JSON.stringify(info, null, 2);
+                logMessage('设备信息已刷新');
+            } catch (error) {
+                showError('设备信息获取失败', error);
             }
         }
-
-        // 将十六进制字符串转换为字节数组
-        function hexStringToByte(str) {
-            if (!str) {
-                return new Uint8Array();
+        // 刷新蓝牙状态
+        async function refreshBluetoothStatus() {
+            try {
+                const status = await WebBridge.invoke('bluetooth', 'getStatus');
+                updateStatus(status.connected ? '已连接' : '未连接', status.connected);
+                logMessage('蓝牙状态: ' + JSON.stringify(status));
+            } catch (error) {
+                showError('蓝牙状态获取失败', error);
             }
-
-            // 转换为大写并去除所有空格
-            str = str.toUpperCase().replace(/\s/g, '');
-
-            // 检查是否为有效的十六进制字符串
-            if (!/^[0-9A-F]*$/.test(str)) {
-                logMessage('错误：包含无效的十六进制字符');
-                return new Uint8Array();
-            }
-
-            // 如果长度为奇数，添加前导零
-            if (str.length % 2 !== 0) {
-                str = '0' + str;
-                logMessage('警告：十六进制字符串长度为奇数，已添加前导零');
-            }
-
-            var a = [];
-            for (var i = 0, len = str.length; i < len; i += 2) {
-                a.push(parseInt(str.substr(i, 2), 16));
-            }
-            return new Uint8Array(a);
         }
-
-        // 蓝牙连接回调
-        window.onBluetoothConnected = function (address) {
-            document.getElementById('statusDiv').className = 'status connected';
-            document.getElementById('statusDiv').innerHTML = '设备状态：已连接 - ' + address;
-            logMessage('设备已连接: ' + address);
-        };
-
-        window.onBluetoothDisconnected = function (address) {
-            document.getElementById('statusDiv').className = 'status disconnected';
-            document.getElementById('statusDiv').innerHTML = '设备状态：未连接';
-            logMessage('设备已断开: ' + address);
-            console.log('设备已断开: ' + address);
-            
-        };
-
-        window.onBluetoothError = function (error) {
-            logMessage('错误: ' + error);
-        };
-
-        window.onServicesDiscovered = function (services) {
-            logMessage('发现服务: ' + services);
-        };
-
-        window.onCharacteristicChanged = function (data) {
-            let json = JSON.parse(data);
-            let displayValue = json.value;
-            if (json.hexValue) {
-                displayValue = json.value + " (HEX: " + json.hexValue + ")";
-            }
-            logMessage('收到数据: ' + displayValue + ' (UUID: ' + json.uuid + ')');
-        };
-
-        // 当蓝牙准备就绪时的回调函数
-        window.onBluetoothReady = function () {
-            logMessage('状态: 蓝牙已准备就绪');
-        };
-
-        // 切换蓝牙通知状态
-        function toggleNotifications() {
-            let enabled = document.getElementById('notificationsSwitch').checked;
-            BluetoothInterface.setNotificationsEnabled(enabled);
-            logMessage('设备通知已' + (enabled ? '开启' : '关闭'));
-        }
-
-        // 接收来自App的消息
-        window.onAppMessage = function(message) {
-            logMessage('收到App消息: ' + JSON.stringify(message));
-            
-            // 获取消息类型和数据
-            const type = message.type || 'unknown';
-            const data = message.data || {};
-            
-            // 更新UI显示
-            const resultElement = document.getElementById('appMessageResult');
-            
-            // 根据消息类型设置不同背景色
-            let bgColor = '#f5f5f5';
-            if (type === 'appMessage') bgColor = '#E3F2FD';
-            else if (type === 'notification') bgColor = '#FFECB3';
-            else if (type === 'response') bgColor = '#E8F5E9';
-            
-            resultElement.style.backgroundColor = bgColor;
-            
-            // 格式化显示消息
-            let displayContent = `
-                <div style="font-weight: bold;">消息类型: ${type}</div>
-                <div style="margin-top: 5px;">时间戳: ${new Date().toLocaleTimeString()}</div>
-                <pre style="margin-top: 10px; white-space: pre-wrap; word-break: break-word;">${JSON.stringify(data, null, 2)}</pre>
-            `;
-            
-            resultElement.innerHTML = displayContent;
-        };
-        
-        // 发送自定义消息到App
-        function sendCustomMessageToApp() {
+        // 发送 App 消息
+        async function sendMessageToApp() {
             try {
                 const type = document.getElementById('messageType').value;
-                const content = document.getElementById('messageContent').value || 'Hello from H5!';
-                
-                let data = {};
-                
-                // 根据选择的类型创建不同格式的数据
-                switch(type) {
-                    case 'text':
-                        data = { text: content };
-                        break;
-                    case 'json':
-                        try {
-                            // 尝试将输入解析为JSON
-                            data = JSON.parse(content);
-                        } catch(e) {
-                            data = {
-                                text: content,
-                                note: "用户输入的不是有效JSON，已转换为文本"
-                            };
-                        }
-                        break;
-                    case 'action':
-                        data = {
-                            action: content,
-                            params: {
-                                timestamp: Date.now()
-                            }
-                        };
-                        break;
-                }
-                
-                // 创建消息对象
-                const messageData = {
-                    type: "h5Message",
-                    data: data
-                };
-                
-                // 发送到App
-                MessageBridge.sendMessageToApp(JSON.stringify(messageData));
-                logMessage('已发送自定义消息: ' + JSON.stringify(data));
-                
-            } catch (e) {
-                logMessage('发送消息错误: ' + e.message);
-            }
-        }
-        
-        // 发送用户信息到App
-        function sendUserInfoToApp() {
-            try {
-                const messageData = {
-                    type: "userInfo",
+                const text = document.getElementById('messageContent').value;
+                await WebBridge.invoke('message', 'sendToApp', {
+                    type,
                     data: {
-                        userId: "user_" + Math.floor(Math.random() * 10000),
-                        username: "WebUser",
-                        loginTime: new Date().toISOString(),
-                        sessionInfo: {
-                            id: "sess_" + Date.now(),
-                            expiresIn: 3600
-                        },
-                        preferences: {
-                            theme: "dark",
-                            notifications: true
-                        }
+                        text,
+                        timestamp: Date.now()
                     }
-                };
-                
-                MessageBridge.sendMessageToApp(JSON.stringify(messageData));
-                logMessage('已发送用户信息到App');
-                
-            } catch (e) {
-                logMessage('发送用户信息错误: ' + e.message);
+                });
+                logMessage('已发送消息到 App: ' + type);
+            } catch (error) {
+                showError('发送 App 消息失败', error);
             }
         }
-        
-        // 发送页面数据到App
-        function sendPageDataToApp() {
+        // 开始扫码
+        async function startScan() {
             try {
-                const messageData = {
-                    type: "pageData",
-                    data: {
-                        url: window.location.href,
-                        title: document.title,
-                        timestamp: Date.now(),
-                        metrics: {
-                            viewportWidth: window.innerWidth,
-                            viewportHeight: window.innerHeight,
-                            devicePixelRatio: window.devicePixelRatio
-                        },
-                        performance: {
-                            loadTime: performance.timing.loadEventEnd - performance.timing.navigationStart,
-                            domReady: performance.timing.domComplete - performance.timing.domLoading
-                        }
-                    }
-                };
-                
-                MessageBridge.sendMessageToApp(JSON.stringify(messageData));
-                logMessage('已发送页面数据到App');
-                
-            } catch (e) {
-                logMessage('发送页面数据错误: ' + e.message);
+                const result = await WebBridge.invoke('camera', 'scanQr');
+                document.getElementById('scanResult').textContent = result.text || '';
+                logMessage('扫码结果: ' + (result.text || ''));
+            } catch (error) {
+                showError('扫码失败', error);
             }
         }
-        
-        // 请求App执行操作
-        function requestAppAction() {
+        // 加载已配对设备
+        async function loadPairedDevices() {
             try {
-                const messageData = {
-                    type: "action",
-                    data: {
-                        actionType: "openNativeDialog",
-                        title: "来自H5的请求",
-                        message: "这是H5请求App执行的一个操作",
-                        options: ["确定", "取消"],
-                        requestId: "req_" + Date.now()
-                    }
-                };
-                
-                MessageBridge.sendMessageToApp(JSON.stringify(messageData));
-                logMessage('已发送操作请求到App');
-                
-            } catch (e) {
-                logMessage('发送操作请求错误: ' + e.message);
+                const result = await WebBridge.invoke('bluetooth', 'getPairedDevices');
+                logMessage('已配对设备: ' + JSON.stringify(result.devices || []));
+            } catch (error) {
+                showError('读取已配对设备失败', error);
             }
         }
-        
-        // 获取设备信息
-        function getDeviceInfo() {
+        // 连接蓝牙设备
+        async function connectDevice() {
             try {
-                let info = JSON.parse(MessageBridge.getDeviceInfo());
-                document.getElementById('deviceInfo').textContent =
-                    '设备信息: ' + info.manufacturer + ' ' + info.model + ', Android ' + info.osVersion;
-            } catch (e) {
-                console.error('获取设备信息失败', e);
+                const macAddress = document.getElementById('macAddress').value.trim();
+                await WebBridge.invoke('bluetooth', 'connect', { macAddress });
+                logMessage('连接请求已发送: ' + macAddress);
+            } catch (error) {
+                showError('连接失败', error);
             }
         }
-        
-        // 页面加载完成后检查蓝牙状态
-        window.onload = function () {
-            checkBluetoothStatus();
-            
-            // 同步通知开关状态
+        // 断开蓝牙连接
+        async function disconnectDevice() {
             try {
-                let notificationsEnabled = BluetoothInterface.isNotificationsEnabled();
-                document.getElementById('notificationsSwitch').checked = notificationsEnabled;
-            } catch (e) {
-                console.error('获取通知状态失败', e);
+                await WebBridge.invoke('bluetooth', 'disconnect');
+                logMessage('断开请求已发送');
+            } catch (error) {
+                showError('断开失败', error);
             }
-            
-            // 获取设备信息
-            getDeviceInfo();
-        };
-        
-        function onBluetoothStateChange(msg) {
-            logMessage('蓝牙状态变化通知: ' + msg);
         }
-
-        // 页面加载完成后检查设备信息
-        window.addEventListener('DOMContentLoaded', function() {
-            // 延迟执行，确保JavaScript接口已准备好
-            setTimeout(function() {
-                if (typeof DeviceChecker !== 'undefined') {
-                    try {
-                        const deviceInfo = JSON.parse(DeviceChecker.getDeviceInfo());
-                        const deviceInfoElement = document.getElementById('deviceInfo');
-                        if (deviceInfoElement) {
-                            deviceInfoElement.innerHTML = `
-                                设备信息: ${deviceInfo.manufacturer} ${deviceInfo.model} 
-                                (Android ${deviceInfo.androidVersion}, API ${deviceInfo.apiLevel})
-                                <br>蓝牙: ${deviceInfo.bluetoothSupported ? '支持' : '不支持'} | 
-                                BLE: ${deviceInfo.bleSupported ? '支持' : '不支持'} | 
-                                相机: ${deviceInfo.cameraSupported ? '支持' : '不支持'}
-                            `;
-                        }
-                        logMessage('设备检查完成: ' + deviceInfo.manufacturer + ' ' + deviceInfo.model);
-                    } catch (e) {
-                        console.log('获取设备信息失败:', e);
-                    }
-                }
-            }, 500);
+        // 发送蓝牙数据
+        async function sendBluetoothData() {
+            try {
+                const serviceUUID = document.getElementById('serviceUUID').value.trim();
+                const characteristicUUID = document.getElementById('characteristicUUID').value.trim();
+                const hex = document.getElementById('sendData').value.trim().replace(/\s/g, '').toUpperCase();
+                await WebBridge.invoke('bluetooth', 'writeHex', { serviceUUID, characteristicUUID, hex });
+                logMessage('写入请求已发送: ' + hex);
+            } catch (error) {
+                showError('写入失败', error);
+            }
+        }
+        // 切换设备通知
+        async function toggleNotifications() {
+            try {
+                const enabled = document.getElementById('notificationsSwitch').checked;
+                await WebBridge.invoke('bluetooth', 'setNotificationsEnabled', { enabled });
+                logMessage('设备通知已' + (enabled ? '开启' : '关闭'));
+            } catch (error) {
+                showError('切换通知失败', error);
+            }
+        }
+        // 更新设备状态显示
+        function updateStatus(text, connected) {
+            const statusDiv = document.getElementById('statusDiv');
+            statusDiv.textContent = '设备状态：' + text;
+            statusDiv.className = connected ? 'connected' : '';
+        }
+        // 监听 App 消息事件
+        WebBridge.on('message.fromApp', data => {
+            document.getElementById('appMessageResult').textContent = JSON.stringify(data, null, 2);
+            logMessage('收到 App 消息: ' + JSON.stringify(data));
+        });
+        // 监听蓝牙连接事件
+        WebBridge.on('bluetooth.connected', data => {
+            updateStatus('已连接 - ' + (data.address || ''), true);
+            logMessage('蓝牙已连接: ' + (data.address || ''));
+        });
+        // 监听蓝牙断开事件
+        WebBridge.on('bluetooth.disconnected', data => {
+            updateStatus('未连接', false);
+            logMessage('蓝牙已断开: ' + (data.address || ''));
+        });
+        // 监听蓝牙错误事件
+        WebBridge.on('bluetooth.error', data => {
+            logMessage('蓝牙错误: ' + (data.message || JSON.stringify(data)));
+        });
+        // 监听蓝牙状态变化事件
+        WebBridge.on('bluetooth.stateChanged', data => {
+            logMessage('蓝牙状态变化: ' + (data.message || JSON.stringify(data)));
+        });
+        // 监听蓝牙服务发现事件
+        WebBridge.on('bluetooth.servicesDiscovered', data => {
+            logMessage('发现服务: ' + JSON.stringify(data.services || []));
+        });
+        // 监听蓝牙特征值变化事件
+        WebBridge.on('bluetooth.characteristicChanged', data => {
+            logMessage('收到设备数据: ' + JSON.stringify(data));
+        });
+        // 监听蓝牙写入完成事件
+        WebBridge.on('bluetooth.writeCompleted', data => {
+            logMessage('写入完成: ' + JSON.stringify(data));
+        });
+        // 监听相机扫码结果事件
+        WebBridge.on('camera.qrResult', data => {
+            document.getElementById('scanResult').textContent = data.text || '';
+        });
+        // 监听页面加载完成事件
+        window.addEventListener('DOMContentLoaded', () => {
+            refreshDeviceInfo();
+            refreshBluetoothStatus();
         });
     </script>
 </body>

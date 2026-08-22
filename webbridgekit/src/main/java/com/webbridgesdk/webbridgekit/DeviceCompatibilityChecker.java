@@ -5,7 +5,8 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.util.Log;
-import android.webkit.JavascriptInterface;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * 设备兼容性检查工具类
@@ -23,7 +24,6 @@ public class DeviceCompatibilityChecker {
     /**
      * 检查设备是否支持蓝牙功能
      */
-    @JavascriptInterface
     public boolean isBluetoothSupported() {
         return BluetoothAdapter.getDefaultAdapter() != null;
     }
@@ -31,7 +31,6 @@ public class DeviceCompatibilityChecker {
     /**
      * 检查设备是否支持BLE功能
      */
-    @JavascriptInterface
     public boolean isBLESupported() {
         return context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE);
     }
@@ -39,7 +38,6 @@ public class DeviceCompatibilityChecker {
     /**
      * 检查设备是否支持相机功能
      */
-    @JavascriptInterface
     public boolean isCameraSupported() {
         return context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA);
     }
@@ -47,7 +45,6 @@ public class DeviceCompatibilityChecker {
     /**
      * 检查Android版本兼容性
      */
-    @JavascriptInterface
     public boolean isAndroidVersionSupported() {
         // 最低支持Android 5.0 (API 21)
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
@@ -56,18 +53,20 @@ public class DeviceCompatibilityChecker {
     /**
      * 获取设备信息
      */
-    @JavascriptInterface
     public String getDeviceInfo() {
-        return String.format(
-            "{\"manufacturer\":\"%s\",\"model\":\"%s\",\"androidVersion\":\"%s\",\"apiLevel\":%d,\"bluetoothSupported\":%b,\"bleSupported\":%b,\"cameraSupported\":%b}",
-            Build.MANUFACTURER,
-            Build.MODEL,
-            Build.VERSION.RELEASE,
-            Build.VERSION.SDK_INT,
-            isBluetoothSupported(),
-            isBLESupported(),
-            isCameraSupported()
-        );
+        try {
+            return new JSONObject()
+                    .put("manufacturer", Build.MANUFACTURER)
+                    .put("model", Build.MODEL)
+                    .put("androidVersion", Build.VERSION.RELEASE)
+                    .put("apiLevel", Build.VERSION.SDK_INT)
+                    .put("bluetoothSupported", isBluetoothSupported())
+                    .put("bleSupported", isBLESupported())
+                    .put("cameraSupported", isCameraSupported())
+                    .toString();
+        } catch (JSONException e) {
+            return "{}";
+        }
     }
     
     /**
