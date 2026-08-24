@@ -266,12 +266,10 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
                 replySuccess(replyProxy, id, new JSONObject().put("devices", new JSONArray(bluetoothManager.getPairedDevices())));
                 break;
             case "startDiscovery":
-                bluetoothManager.startDiscovery();
-                replySuccess(replyProxy, id, new JSONObject().put("accepted", true));
+                bluetoothManager.startDiscovery(createBluetoothReply(replyProxy, id));
                 break;
             case "stopDiscovery":
-                bluetoothManager.stopDiscovery();
-                replySuccess(replyProxy, id, new JSONObject().put("accepted", true));
+                bluetoothManager.stopDiscovery(createBluetoothReply(replyProxy, id));
                 break;
             case "getDiscoveredDevices":
                 replySuccess(replyProxy, id, new JSONObject().put("devices", new JSONArray(bluetoothManager.getDiscoveredDevices())));
@@ -281,13 +279,11 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
                 if (!ValidationUtils.isValidMacAddress(macAddress)) {
                     throw new IllegalArgumentException("macAddress is invalid");
                 }
-                bluetoothManager.connectToDevice(macAddress);
-                replySuccess(replyProxy, id, new JSONObject().put("accepted", true));
+                bluetoothManager.connectToDevice(macAddress, createBluetoothReply(replyProxy, id));
                 break;
             }
             case "disconnect":
-                bluetoothManager.disconnect();
-                replySuccess(replyProxy, id, new JSONObject().put("accepted", true));
+                bluetoothManager.disconnect(createBluetoothReply(replyProxy, id));
                 break;
             case "writeHex": {
                 String serviceUUID = payload.optString("serviceUUID", "");
@@ -299,13 +295,17 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
                 if (!ValidationUtils.isValidHexString(hex)) {
                     throw new IllegalArgumentException("hex is invalid");
                 }
-                bluetoothManager.writeRawHexData(serviceUUID, characteristicUUID, hex);
-                replySuccess(replyProxy, id, new JSONObject().put("accepted", true));
+                bluetoothManager.writeRawHexData(
+                        serviceUUID,
+                        characteristicUUID,
+                        hex,
+                        createBluetoothReply(replyProxy, id));
                 break;
             }
             case "setNotificationsEnabled":
-                bluetoothManager.setNotificationsEnabled(payload.optBoolean("enabled", true));
-                replySuccess(replyProxy, id, new JSONObject().put("enabled", bluetoothManager.isNotificationsEnabled()));
+                bluetoothManager.setNotificationsEnabled(
+                        payload.optBoolean("enabled", true),
+                        createBluetoothReply(replyProxy, id));
                 break;
             case "isNotificationsEnabled":
                 replySuccess(replyProxy, id, new JSONObject().put("enabled", bluetoothManager.isNotificationsEnabled()));
@@ -361,12 +361,10 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
                 sendFallbackSuccess(id, new JSONObject().put("devices", new JSONArray(bluetoothManager.getPairedDevices())));
                 break;
             case "startDiscovery":
-                bluetoothManager.startDiscovery();
-                sendFallbackSuccess(id, new JSONObject().put("accepted", true));
+                bluetoothManager.startDiscovery(createFallbackBluetoothReply(id));
                 break;
             case "stopDiscovery":
-                bluetoothManager.stopDiscovery();
-                sendFallbackSuccess(id, new JSONObject().put("accepted", true));
+                bluetoothManager.stopDiscovery(createFallbackBluetoothReply(id));
                 break;
             case "getDiscoveredDevices":
                 sendFallbackSuccess(id, new JSONObject().put("devices", new JSONArray(bluetoothManager.getDiscoveredDevices())));
@@ -376,13 +374,11 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
                 if (!ValidationUtils.isValidMacAddress(macAddress)) {
                     throw new IllegalArgumentException("macAddress is invalid");
                 }
-                bluetoothManager.connectToDevice(macAddress);
-                sendFallbackSuccess(id, new JSONObject().put("accepted", true));
+                bluetoothManager.connectToDevice(macAddress, createFallbackBluetoothReply(id));
                 break;
             }
             case "disconnect":
-                bluetoothManager.disconnect();
-                sendFallbackSuccess(id, new JSONObject().put("accepted", true));
+                bluetoothManager.disconnect(createFallbackBluetoothReply(id));
                 break;
             case "writeHex": {
                 String serviceUUID = payload.optString("serviceUUID", "");
@@ -394,13 +390,17 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
                 if (!ValidationUtils.isValidHexString(hex)) {
                     throw new IllegalArgumentException("hex is invalid");
                 }
-                bluetoothManager.writeRawHexData(serviceUUID, characteristicUUID, hex);
-                sendFallbackSuccess(id, new JSONObject().put("accepted", true));
+                bluetoothManager.writeRawHexData(
+                        serviceUUID,
+                        characteristicUUID,
+                        hex,
+                        createFallbackBluetoothReply(id));
                 break;
             }
             case "setNotificationsEnabled":
-                bluetoothManager.setNotificationsEnabled(payload.optBoolean("enabled", true));
-                sendFallbackSuccess(id, new JSONObject().put("enabled", bluetoothManager.isNotificationsEnabled()));
+                bluetoothManager.setNotificationsEnabled(
+                        payload.optBoolean("enabled", true),
+                        createFallbackBluetoothReply(id));
                 break;
             case "isNotificationsEnabled":
                 sendFallbackSuccess(id, new JSONObject().put("enabled", bluetoothManager.isNotificationsEnabled()));
@@ -409,6 +409,36 @@ public class WebViewBridge implements CameraManager.WebViewCallback {
                 sendFallbackError(id, BridgeError.UNSUPPORTED_ACTION);
                 break;
         }
+    }
+
+    private BluetoothManager.OperationCallback createBluetoothReply(
+            JavaScriptReplyProxy replyProxy,
+            String id) {
+        return new BluetoothManager.OperationCallback() {
+            @Override
+            public void onSuccess(JSONObject result) {
+                replySuccess(replyProxy, id, result);
+            }
+
+            @Override
+            public void onFailure(BridgeError error) {
+                replyError(replyProxy, id, error);
+            }
+        };
+    }
+
+    private BluetoothManager.OperationCallback createFallbackBluetoothReply(String id) {
+        return new BluetoothManager.OperationCallback() {
+            @Override
+            public void onSuccess(JSONObject result) {
+                sendFallbackSuccess(id, result);
+            }
+
+            @Override
+            public void onFailure(BridgeError error) {
+                sendFallbackError(id, error);
+            }
+        };
     }
 
     private void replySuccess(JavaScriptReplyProxy replyProxy, String id, Object data) {

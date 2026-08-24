@@ -219,18 +219,38 @@ await WebBridge.invoke('bluetooth', 'startDiscovery');
 const discovered = await WebBridge.invoke('bluetooth', 'getDiscoveredDevices');
 await WebBridge.invoke('bluetooth', 'stopDiscovery');
 
-await WebBridge.invoke('bluetooth', 'connect', {
+const connected = await WebBridge.invoke('bluetooth', 'connect', {
   macAddress: '5C:53:10:7A:1C:80'
 });
+console.log(connected.address, connected.services);
 
-await WebBridge.invoke('bluetooth', 'writeHex', {
+const writeResult = await WebBridge.invoke('bluetooth', 'writeHex', {
   serviceUUID: '0000FFF0-0000-1000-8000-00805F9B34FB',
   characteristicUUID: '0000FFF2-0000-1000-8000-00805F9B34FB',
   hex: '7B864814071027923000280033BD7D'
 });
+console.log(writeResult.status);
 
-await WebBridge.invoke('bluetooth', 'disconnect');
+const disconnected = await WebBridge.invoke('bluetooth', 'disconnect');
+console.log(disconnected.disconnected);
+
+const notificationResult = await WebBridge.invoke(
+  'bluetooth',
+  'setNotificationsEnabled',
+  { enabled: true }
+);
+console.log(notificationResult.enabled);
 ```
+
+蓝牙命令的 Promise 都表示本次命令的最终结果：
+
+- `startDiscovery` / `stopDiscovery`：表示搜索已启动或已停止。搜索启动后发生的扫描会话错误仍通过 `bluetooth.error` 广播。
+- `connect`：等待 GATT 连接和服务发现完成后才 resolve，返回 `address` 和 `services`。
+- `disconnect`：等待实际断开回调；断开超时会 reject。
+- `writeHex`：等待普通写入或全部分片写入完成；写入失败、权限异常和超时会 reject。
+- `setNotificationsEnabled`：返回实际设置后的 `enabled` 状态。
+
+业务失败处理只放在调用 Promise 的 `catch` 中。蓝牙事件可能与 Promise reject 同时出现，但事件监听器只应该更新界面、日志和状态，不应该再次执行业务通知。
 
 蓝牙事件：
 
@@ -259,6 +279,19 @@ WebBridge.on('bluetooth.error', data => console.log(data.message));
 | `INVALID_PARAMETER` | 参数格式错误 |
 | `CAMERA_SCAN_CANCELLED` | 用户取消扫码 |
 | `NATIVE_ERROR` | 原生能力执行失败 |
+| `BLUETOOTH_DISABLED` | 蓝牙未启用 |
+| `BLUETOOTH_NOT_SUPPORTED` | 设备不支持蓝牙 |
+| `BLUETOOTH_BUSY` | 另一个蓝牙操作正在进行 |
+| `BLUETOOTH_CONNECT_TIMEOUT` | 连接超时 |
+| `BLUETOOTH_CONNECTION_FAILED` | GATT 连接失败 |
+| `BLUETOOTH_SERVICE_DISCOVERY_FAILED` | 服务发现失败 |
+| `BLUETOOTH_DISCONNECT_TIMEOUT` | 断开超时 |
+| `BLUETOOTH_DISCONNECT_FAILED` | 断开失败 |
+| `BLUETOOTH_NOT_CONNECTED` | 当前没有蓝牙连接 |
+| `BLUETOOTH_WRITE_FAILED` | 写入失败 |
+| `BLUETOOTH_WRITE_TIMEOUT` | 写入超时 |
+| `BLUETOOTH_DISCOVERY_FAILED` | 搜索失败 |
+| `BLUETOOTH_CANCELLED` | 操作被取消 |
 
 ## 迁移说明
 

@@ -59,8 +59,10 @@ DeviceChecker.getDeviceInfo()
 替换为：
 
 ```javascript
-await WebBridge.invoke('bluetooth', 'connect', { macAddress: mac });
-await WebBridge.invoke('bluetooth', 'writeHex', { serviceUUID, characteristicUUID, hex });
+const connected = await WebBridge.invoke('bluetooth', 'connect', { macAddress: mac });
+const writeResult = await WebBridge.invoke('bluetooth', 'writeHex', { serviceUUID, characteristicUUID, hex });
+await WebBridge.invoke('bluetooth', 'disconnect');
+await WebBridge.invoke('bluetooth', 'setNotificationsEnabled', { enabled: true });
 const qr = await WebBridge.invoke('camera', 'scanQr');
 await WebBridge.invoke('message', 'sendToApp', { type, data });
 const info = await WebBridge.invoke('device', 'getInfo');
@@ -85,6 +87,8 @@ WebBridge.on('bluetooth.characteristicChanged', handler);
 WebBridge.on('camera.qrResult', handler);
 WebBridge.on('message.fromApp', handler);
 ```
+
+蓝牙命令的 Promise 统一表示命令的最终结果。连接会等待服务发现完成，断开会等待实际断开，写入会等待普通写入或全部分片写入完成；失败统一通过 `catch` 返回 `{ code, message }`。`bluetooth.connected`、`bluetooth.error`、`bluetooth.disconnected`、`bluetooth.writeCompleted` 等事件只用于 UI、日志和状态广播，不能与 Promise 的 `catch` 重复执行业务通知。
 
 ## 权限策略
 

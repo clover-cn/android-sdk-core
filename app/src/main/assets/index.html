@@ -386,8 +386,8 @@
         // 开始搜索蓝牙设备
         async function startBluetoothDiscovery() {
             try {
-                await WebBridge.invoke('bluetooth', 'startDiscovery');
-                logMessage('蓝牙搜索已开始');
+                const result = await WebBridge.invoke('bluetooth', 'startDiscovery');
+                logMessage('蓝牙搜索已开始: ' + JSON.stringify(result));
             } catch (error) {
                 showError('开始搜索失败', error);
             }
@@ -395,8 +395,8 @@
         // 停止搜索蓝牙设备
         async function stopBluetoothDiscovery() {
             try {
-                await WebBridge.invoke('bluetooth', 'stopDiscovery');
-                logMessage('蓝牙搜索已停止');
+                const result = await WebBridge.invoke('bluetooth', 'stopDiscovery');
+                logMessage('蓝牙搜索已停止: ' + JSON.stringify(result));
             } catch (error) {
                 showError('停止搜索失败', error);
             }
@@ -449,9 +449,10 @@
         // 连接蓝牙设备
         async function connectDevice() {
             try {
+                logMessage('开始连接设备...');
                 const macAddress = document.getElementById('macAddress').value.trim();
-                await WebBridge.invoke('bluetooth', 'connect', { macAddress });
-                logMessage('连接请求已发送: ' + macAddress);
+                const result = await WebBridge.invoke('bluetooth', 'connect', { macAddress });
+                logMessage('蓝牙连接成功: ' + (result.address || macAddress));
             } catch (error) {
                 showError('连接失败', error);
             }
@@ -459,8 +460,8 @@
         // 断开蓝牙连接
         async function disconnectDevice() {
             try {
-                await WebBridge.invoke('bluetooth', 'disconnect');
-                logMessage('断开请求已发送');
+                const result = await WebBridge.invoke('bluetooth', 'disconnect');
+                logMessage('蓝牙已断开: ' + JSON.stringify(result));
             } catch (error) {
                 showError('断开失败', error);
             }
@@ -471,8 +472,8 @@
                 const serviceUUID = document.getElementById('serviceUUID').value.trim();
                 const characteristicUUID = document.getElementById('characteristicUUID').value.trim();
                 const hex = document.getElementById('sendData').value.trim().replace(/\s/g, '').toUpperCase();
-                await WebBridge.invoke('bluetooth', 'writeHex', { serviceUUID, characteristicUUID, hex });
-                logMessage('写入请求已发送: ' + hex);
+                const result = await WebBridge.invoke('bluetooth', 'writeHex', { serviceUUID, characteristicUUID, hex });
+                logMessage('蓝牙写入成功: ' + JSON.stringify(result));
             } catch (error) {
                 showError('写入失败', error);
             }
@@ -481,8 +482,8 @@
         async function toggleNotifications() {
             try {
                 const enabled = document.getElementById('notificationsSwitch').checked;
-                await WebBridge.invoke('bluetooth', 'setNotificationsEnabled', { enabled });
-                logMessage('设备通知已' + (enabled ? '开启' : '关闭'));
+                const result = await WebBridge.invoke('bluetooth', 'setNotificationsEnabled', { enabled });
+                logMessage('设备通知已' + (result.enabled ? '开启' : '关闭'));
             } catch (error) {
                 showError('切换通知失败', error);
             }
