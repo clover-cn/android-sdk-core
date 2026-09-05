@@ -14,6 +14,7 @@ import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.location.LocationManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -163,6 +164,13 @@ public class BluetoothManager {
 
         if (!hasBluetoothScanPermission()) {
             failOperation(callback, BridgeError.PERMISSION_DENIED);
+            return;
+        }
+
+        if (!isLocationServicesEnabled()) {
+            failOperation(callback, new BridgeError(
+                    BridgeError.BLUETOOTH_DISCOVERY_FAILED.getCode(),
+                    "定位服务未开启，Android BLE 扫描可能无法返回附近设备"));
             return;
         }
 
@@ -1407,8 +1415,11 @@ public class BluetoothManager {
 
     private boolean hasBluetoothScanPermission() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            return context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN)
+            boolean hasScan = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN)
                     == PackageManager.PERMISSION_GRANTED;
+            boolean hasLocation = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED;
+            return hasScan && hasLocation;
         } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             boolean hasBluetooth = context.checkSelfPermission(android.Manifest.permission.BLUETOOTH)
                     == PackageManager.PERMISSION_GRANTED;
@@ -1419,6 +1430,25 @@ public class BluetoothManager {
             return hasBluetooth && hasBluetoothAdmin && hasLocation;
         }
         return true;
+    }
+
+    private boolean isLocationServicesEnabled() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+            return true;
+        }
+
+        try {
+            LocationManager locationManager =
+                    (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+            if (locationManager == null) {
+                return false;
+            }
+            return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                    || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking location services: " + e.getMessage());
+            return false;
+        }
     }
 
     /**

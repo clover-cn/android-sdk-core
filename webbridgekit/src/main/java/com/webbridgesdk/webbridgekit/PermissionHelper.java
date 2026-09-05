@@ -36,7 +36,8 @@ public class PermissionHelper {
     public static String[] getBluetoothScanPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return new String[] {
-                Manifest.permission.BLUETOOTH_SCAN
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.ACCESS_FINE_LOCATION
             };
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             return new String[] {

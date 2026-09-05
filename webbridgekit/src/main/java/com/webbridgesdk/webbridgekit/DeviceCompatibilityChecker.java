@@ -56,6 +56,7 @@ public class DeviceCompatibilityChecker {
     public String getDeviceInfo() {
         try {
             return new JSONObject()
+                    .put("platform", "android")
                     .put("manufacturer", Build.MANUFACTURER)
                     .put("model", Build.MODEL)
                     .put("androidVersion", Build.VERSION.RELEASE)

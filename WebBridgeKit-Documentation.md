@@ -46,9 +46,7 @@ SDK manifest 会合并最小权限：
 <uses-permission
     android:name="android.permission.BLUETOOTH_ADMIN"
     android:maxSdkVersion="30" />
-<uses-permission
-    android:name="android.permission.ACCESS_FINE_LOCATION"
-    android:maxSdkVersion="30" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 <uses-permission android:name="android.permission.CAMERA" />
@@ -56,7 +54,7 @@ SDK manifest 会合并最小权限：
 <uses-feature android:name="android.hardware.camera" android:required="false" />
 ```
 
-扫描权限只在 H5 显式调用 `startDiscovery` 时请求；直接 `connect` 不会触发扫描权限，也不会隐式搜索设备。
+扫描权限只在 H5 显式调用 `startDiscovery` 时请求；直接 `connect` 不会触发扫描权限，也不会隐式搜索设备。Android 12+ 搜索附近 BLE 设备时请求 `BLUETOOTH_SCAN` 和 `ACCESS_FINE_LOCATION`，同时要求系统定位服务处于开启状态，否则部分设备会出现扫描已启动但没有结果的情况。
 
 ## Android 接入
 

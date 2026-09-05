@@ -63,6 +63,7 @@ public class MessageManager {
     public String getDeviceInfo() {
         try {
             JSONObject info = new JSONObject();
+            info.put("platform", "android");
             info.put("model", android.os.Build.MODEL);
             info.put("manufacturer", android.os.Build.MANUFACTURER);
             info.put("os", "Android");

@@ -12,6 +12,7 @@ import android.view.View
 import android.view.WindowManager
 import android.webkit.WebView
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,7 +28,7 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
     private lateinit var webView: WebView
     private lateinit var webViewBridge: WebViewBridge
     private var pendingPermissionCallback: WebViewBridgeConfig.PermissionCallback? = null
-    private var floatView: View? = null
+    private val floatViews = mutableListOf<View>()
 
     private val TAG = "MainActivity"
 
@@ -138,11 +139,20 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
         // 获取WindowManager服务
         val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
-        // 创建悬浮按钮
-        val button = Button(this)
-        button.text = "发送数据"
-        button.alpha = 0.8f
-        button.setBackgroundColor(0xFF5C6BC0.toInt()) // 设置背景色
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.alpha = 0.9f
+
+        val remoteButton = Button(this)
+        remoteButton.text = "远程Demo"
+        remoteButton.setBackgroundColor(0xFF00897B.toInt())
+
+        val messageButton = Button(this)
+        messageButton.text = "发送数据"
+        messageButton.setBackgroundColor(0xFF5C6BC0.toInt()) // 设置背景色
+
+        container.addView(remoteButton)
+        container.addView(messageButton)
 
         // 配置WindowManager布局参数 - 使用TYPE_APPLICATION或TYPE_APPLICATION_PANEL
         val params = WindowManager.LayoutParams(
@@ -159,7 +169,12 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
         params.y = 100
 
         // 处理点击事件
-        button.setOnClickListener {
+        remoteButton.setOnClickListener {
+            webViewBridge.loadUrl(REMOTE_DEMO_URL)
+            Toast.makeText(this, "正在打开远程Demo", Toast.LENGTH_SHORT).show()
+        }
+
+        messageButton.setOnClickListener {
             sendMessageToH5()
         }
 
@@ -169,7 +184,7 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
         var initialTouchX: Float = 0f
         var initialTouchY: Float = 0f
         
-        button.setOnTouchListener { v, event ->
+        val dragTouchListener = View.OnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     // 记录初始位置
@@ -184,16 +199,19 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
                     params.x = initialX + (initialTouchX - event.rawX).toInt()
                     params.y = initialY + (event.rawY - initialTouchY).toInt()
                     // 更新悬浮窗位置
-                    windowManager.updateViewLayout(v, params)
+                    windowManager.updateViewLayout(container, params)
                     true
                 }
                 else -> false
             }
         }
+        container.setOnTouchListener(dragTouchListener)
+        remoteButton.setOnTouchListener(dragTouchListener)
+        messageButton.setOnTouchListener(dragTouchListener)
 
         // 将按钮添加到窗口
-        windowManager.addView(button, params)
-        floatView = button
+        windowManager.addView(container, params)
+        floatViews.add(container)
     }
     
     /**
@@ -363,9 +381,12 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
     override fun onDestroy() {
         super.onDestroy()
         // 移除悬浮窗
-        floatView?.let {
+        if (floatViews.isNotEmpty()) {
             val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-            windowManager.removeView(it)
+            floatViews.forEach {
+                windowManager.removeView(it)
+            }
+            floatViews.clear()
         }
         
         // 移除消息监听器
@@ -376,6 +397,6 @@ class MainActivity : ComponentActivity(), WebViewBridge.MessageListener {
     }
     
     companion object {
-        // 移除OVERLAY_PERMISSION_REQUEST_CODE常量，不再需要
+        private const val REMOTE_DEMO_URL = "http://192.168.1.134:3001/"
     }
 }
